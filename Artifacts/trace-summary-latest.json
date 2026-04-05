@@ -1,0 +1,335 @@
+{
+  "categoryCounts" : [
+    {
+      "count" : 99,
+      "name" : "state"
+    },
+    {
+      "count" : 68,
+      "name" : "grouping"
+    },
+    {
+      "count" : 14,
+      "name" : "import"
+    },
+    {
+      "count" : 7,
+      "name" : "app"
+    },
+    {
+      "count" : 1,
+      "name" : "project"
+    }
+  ],
+  "firstTimestamp" : "2026-04-05T01:36:10Z",
+  "generatedAt" : "2026-04-05T01:36:54Z",
+  "lastTimestamp" : "2026-04-05T01:36:41Z",
+  "levelCounts" : [
+    {
+      "count" : 112,
+      "name" : "metric"
+    },
+    {
+      "count" : 77,
+      "name" : "info"
+    }
+  ],
+  "metricSummaries" : [
+    {
+      "averageDurationMs" : 11914.37,
+      "category" : "import",
+      "count" : 1,
+      "maxDurationMs" : 11914.37,
+      "name" : "import_completed",
+      "p50DurationMs" : 11914.37,
+      "p95DurationMs" : 11914.37
+    },
+    {
+      "averageDurationMs" : 9242.26,
+      "category" : "import",
+      "count" : 1,
+      "maxDurationMs" : 9242.26,
+      "name" : "import_run_completed",
+      "p50DurationMs" : 9242.26,
+      "p95DurationMs" : 9242.26
+    },
+    {
+      "averageDurationMs" : 6956.34,
+      "category" : "import",
+      "count" : 1,
+      "maxDurationMs" : 6956.34,
+      "name" : "import_grouping_completed",
+      "p50DurationMs" : 6956.34,
+      "p95DurationMs" : 6956.34
+    },
+    {
+      "averageDurationMs" : 6956,
+      "category" : "grouping",
+      "count" : 1,
+      "maxDurationMs" : 6956,
+      "name" : "grouping_completed",
+      "p50DurationMs" : 6956,
+      "p95DurationMs" : 6956
+    },
+    {
+      "averageDurationMs" : 6299,
+      "category" : "grouping",
+      "count" : 1,
+      "maxDurationMs" : 6299,
+      "name" : "grouping_location_naming_completed",
+      "p50DurationMs" : 6299,
+      "p95DurationMs" : 6299
+    },
+    {
+      "averageDurationMs" : 1913.32,
+      "category" : "import",
+      "count" : 1,
+      "maxDurationMs" : 1913.32,
+      "name" : "initial_manifest_built",
+      "p50DurationMs" : 1913.32,
+      "p95DurationMs" : 1913.32
+    },
+    {
+      "averageDurationMs" : 1528.97,
+      "category" : "grouping",
+      "count" : 1,
+      "maxDurationMs" : 1528.97,
+      "name" : "grouping_subgrouping_completed",
+      "p50DurationMs" : 1528.97,
+      "p95DurationMs" : 1528.97
+    },
+    {
+      "averageDurationMs" : 656,
+      "category" : "grouping",
+      "count" : 1,
+      "maxDurationMs" : 656,
+      "name" : "grouping_scene_split_completed",
+      "p50DurationMs" : 656,
+      "p95DurationMs" : 656
+    },
+    {
+      "averageDurationMs" : 205.22,
+      "category" : "import",
+      "count" : 1,
+      "maxDurationMs" : 205.22,
+      "name" : "preview_copy_completed",
+      "p50DurationMs" : 205.22,
+      "p95DurationMs" : 205.22
+    },
+    {
+      "averageDurationMs" : 135.08,
+      "category" : "import",
+      "count" : 1,
+      "maxDurationMs" : 135.08,
+      "name" : "import_source_enumerated",
+      "p50DurationMs" : 135.08,
+      "p95DurationMs" : 135.08
+    }
+  ],
+  "monitoredHotspots" : [
+    {
+      "averageDurationMs" : 6956.34,
+      "breachCount" : 1,
+      "budgetMs" : 1000,
+      "category" : "import",
+      "count" : 1,
+      "maxDurationMs" : 6956.34,
+      "name" : "import_grouping_completed",
+      "p95DurationMs" : 6956.34
+    },
+    {
+      "averageDurationMs" : 1913.32,
+      "breachCount" : 1,
+      "budgetMs" : 1000,
+      "category" : "import",
+      "count" : 1,
+      "maxDurationMs" : 1913.32,
+      "name" : "initial_manifest_built",
+      "p95DurationMs" : 1913.32
+    },
+    {
+      "averageDurationMs" : 26.32,
+      "breachCount" : 0,
+      "budgetMs" : 80,
+      "category" : "app",
+      "count" : 1,
+      "maxDurationMs" : 26.32,
+      "name" : "bootstrap_completed",
+      "p95DurationMs" : 26.32
+    },
+    {
+      "averageDurationMs" : 0.30474747474747477,
+      "breachCount" : 0,
+      "budgetMs" : 8,
+      "category" : "state",
+      "count" : 99,
+      "maxDurationMs" : 0.37,
+      "name" : "derived_state_rebuilt",
+      "p95DurationMs" : 0.33
+    }
+  ],
+  "parseFailureCount" : 0,
+  "recentErrors" : [
+
+  ],
+  "recordCount" : 189,
+  "sessionID" : "D7D98F70-C93B-4246-81E8-9A29E00928AC",
+  "slowSamples" : [
+    {
+      "category" : "import",
+      "durationMs" : 11914.37,
+      "name" : "import_completed",
+      "sequence" : 96,
+      "summary" : "project_name=luma_test_1 selected_group_id=all selected_asset_id=D4FCF0FE-D8B2-4108-A7E1-DA46AF618CB9",
+      "timestamp" : "2026-04-05T01:36:40Z"
+    },
+    {
+      "category" : "import",
+      "durationMs" : 9242.26,
+      "name" : "import_run_completed",
+      "sequence" : 93,
+      "summary" : "project_name=luma_test_1 phase=finalizing source_name=luma_test_1",
+      "timestamp" : "2026-04-05T01:36:40Z"
+    },
+    {
+      "category" : "import",
+      "durationMs" : 6956.34,
+      "name" : "import_grouping_completed",
+      "sequence" : 92,
+      "summary" : "project_name=luma_test_1 phase=finalizing source_name=luma_test_1",
+      "timestamp" : "2026-04-05T01:36:40Z"
+    },
+    {
+      "category" : "grouping",
+      "durationMs" : 6956,
+      "name" : "grouping_completed",
+      "sequence" : 91,
+      "timestamp" : "2026-04-05T01:36:40Z"
+    },
+    {
+      "category" : "grouping",
+      "durationMs" : 6299,
+      "name" : "grouping_location_naming_completed",
+      "sequence" : 90,
+      "timestamp" : "2026-04-05T01:36:40Z"
+    },
+    {
+      "category" : "import",
+      "durationMs" : 1913.32,
+      "name" : "initial_manifest_built",
+      "sequence" : 16,
+      "summary" : "project_name=luma_test_1 phase=preparingThumbnails source_name=luma_test_1",
+      "timestamp" : "2026-04-05T01:36:32Z"
+    },
+    {
+      "category" : "grouping",
+      "durationMs" : 1528.97,
+      "name" : "grouping_subgrouping_completed",
+      "sequence" : 89,
+      "timestamp" : "2026-04-05T01:36:40Z"
+    },
+    {
+      "category" : "grouping",
+      "durationMs" : 656,
+      "name" : "grouping_scene_split_completed",
+      "sequence" : 29,
+      "timestamp" : "2026-04-05T01:36:33Z"
+    },
+    {
+      "category" : "import",
+      "durationMs" : 205.22,
+      "name" : "preview_copy_completed",
+      "sequence" : 19,
+      "summary" : "project_name=luma_test_1 phase=copyingPreviews source_name=luma_test_1",
+      "timestamp" : "2026-04-05T01:36:33Z"
+    },
+    {
+      "category" : "import",
+      "durationMs" : 135.08,
+      "name" : "import_source_enumerated",
+      "sequence" : 14,
+      "summary" : "project_name=luma_test_1 phase=scanning source_name=luma_test_1",
+      "timestamp" : "2026-04-05T01:36:30Z"
+    }
+  ],
+  "topEvents" : [
+    {
+      "category" : "state",
+      "count" : 99,
+      "level" : "metric",
+      "name" : "derived_state_rebuilt"
+    },
+    {
+      "category" : "grouping",
+      "count" : 59,
+      "level" : "info",
+      "name" : "burst_candidate"
+    },
+    {
+      "category" : "grouping",
+      "count" : 5,
+      "level" : "info",
+      "name" : "scene_cut_candidate"
+    },
+    {
+      "category" : "import",
+      "count" : 5,
+      "level" : "info",
+      "name" : "import_phase_changed"
+    },
+    {
+      "category" : "app",
+      "count" : 4,
+      "level" : "info",
+      "name" : "app_activation_attempted"
+    },
+    {
+      "category" : "app",
+      "count" : 1,
+      "level" : "metric",
+      "name" : "bootstrap_completed"
+    },
+    {
+      "category" : "app",
+      "count" : 1,
+      "level" : "info",
+      "name" : "bootstrap_started"
+    },
+    {
+      "category" : "app",
+      "count" : 1,
+      "level" : "info",
+      "name" : "session_started"
+    },
+    {
+      "category" : "grouping",
+      "count" : 1,
+      "level" : "metric",
+      "name" : "grouping_completed"
+    },
+    {
+      "category" : "grouping",
+      "count" : 1,
+      "level" : "metric",
+      "name" : "grouping_location_naming_completed"
+    }
+  ],
+  "tracePath" : "\/Users\/qinkan\/Library\/Application Support\/Luma\/Diagnostics\/runtime-latest.jsonl",
+  "triggerChains" : [
+    {
+      "budgetMs" : 150,
+      "category" : "app",
+      "maxStageDurationMs" : 26.32,
+      "name" : "bootstrap_completed",
+      "overBudget" : false,
+      "sequence" : 7,
+      "stageCount" : 1,
+      "stages" : [
+        "app\/bootstrap_completed 26.32ms"
+      ],
+      "summary" : "project_name=luma_test_1 selected_group_id=all selected_asset_id=8B29F849-9655-4849-90D1-C84D1AFD0545",
+      "timestamp" : "2026-04-05T01:36:10Z",
+      "totalDurationMs" : 26.32
+    }
+  ]
+}
