@@ -120,9 +120,14 @@ final class DisplayImageCache {
             return existing
         }
 
+        let maxPixelSize = recommendedMaxPixelSize(for: asset)
+        let sourceURL = asset.previewURL ?? asset.rawURL
+
         let task = Task<NSImage?, Never> { [weak self] in
             guard let self else { return nil }
-            let image = await self.loadImage(for: asset)
+            // Decode off the main thread using a background continuation,
+            // matching the pattern used in ThumbnailCache.
+            let image = await Self.decodeDisplayImage(from: sourceURL, maxPixelSize: maxPixelSize)
             _ = await MainActor.run {
                 self.inflightLoads.removeValue(forKey: key)
                 if let image {
@@ -138,18 +143,18 @@ final class DisplayImageCache {
         return task
     }
 
-    private func loadImage(for asset: MediaAsset) async -> NSImage? {
-        guard let sourceURL = asset.previewURL ?? asset.rawURL else {
-            return nil
+    private nonisolated static func decodeDisplayImage(from sourceURL: URL?, maxPixelSize: Int) async -> NSImage? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let url = sourceURL,
+                      let cgImage = EXIFParser.makeThumbnail(from: url, maxPixelSize: maxPixelSize) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                continuation.resume(returning: image)
+            }
         }
-
-        let maxPixelSize = recommendedMaxPixelSize(for: asset)
-        guard let cgImage = EXIFParser.makeThumbnail(from: sourceURL, maxPixelSize: maxPixelSize) else {
-            return nil
-        }
-
-        let size = NSSize(width: cgImage.width, height: cgImage.height)
-        return NSImage(cgImage: cgImage, size: size)
     }
 
     private func recommendedMaxPixelSize(for asset: MediaAsset) -> Int {

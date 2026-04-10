@@ -64,6 +64,9 @@ final class ProjectStore {
     var currentProjectDirectory: URL?
     var projectName: String = "Luma"
     var createdAt: Date?
+    /// Stable identifier for the current project manifest.
+    /// Set from the loaded manifest and reused on every save so the id never drifts.
+    private var currentManifestID: UUID = UUID()
     var projectSummaries: [ProjectSummary] = []
     var assets: [MediaAsset] = [] {
         didSet { invalidateDerivedState() }
@@ -207,6 +210,7 @@ final class ProjectStore {
         return result
     }
 
+    /// 仅当当前选中图属于「多张连拍」时返回；单张 subGroup 不视为连拍（详情面板不展示 `main.detail.burst`）。
     var selectedBurstContext: BurstSelectionContext? {
         guard let selectedAssetID else { return nil }
         let cacheKey = BurstSelectionCacheKey(groupID: selectedGroupID, assetID: selectedAssetID)
@@ -224,6 +228,11 @@ final class ProjectStore {
         }
 
         let burst = bursts[burstIndex]
+        guard burst.count > 1 else {
+            selectedBurstContextCacheKey = cacheKey
+            selectedBurstContextCache = nil
+            return nil
+        }
         guard let assetIndex = burst.assets.firstIndex(where: { $0.id == selectedAssetID }) else {
             return nil
         }
@@ -1111,6 +1120,7 @@ final class ProjectStore {
 
     private func apply(manifest: ProjectManifest, in directory: URL) {
         currentProjectDirectory = directory
+        currentManifestID = manifest.id
         projectName = manifest.name
         createdAt = manifest.createdAt
         assets = manifest.assets.sorted { $0.metadata.captureDate < $1.metadata.captureDate }
@@ -1128,6 +1138,7 @@ final class ProjectStore {
 
     private func clearCurrentProject() {
         currentProjectDirectory = nil
+        currentManifestID = UUID()
         projectName = "Luma"
         createdAt = nil
         assets = []
@@ -1247,7 +1258,7 @@ final class ProjectStore {
         manifestSaveTask?.cancel()
 
         let manifest = ProjectManifest(
-            id: UUID(),
+            id: currentManifestID,
             name: projectName,
             createdAt: createdAt ?? .now,
             assets: assets,

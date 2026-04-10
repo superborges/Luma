@@ -92,7 +92,7 @@ struct PerformanceDiagnosticsView: View {
                 statRow("当前项目", store.projectName)
                 statRow("当前范围", "\(store.visibleAssets.count) 张")
                 statRow("显示模式", store.displayMode == .grid ? "网格" : "单张")
-                statRow("当前选中", store.selectedAsset?.baseName ?? "无")
+                statRow("当前选中", store.selectedAsset != nil ? "有" : "无")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

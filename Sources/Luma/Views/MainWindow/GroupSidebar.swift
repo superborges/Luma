@@ -13,7 +13,8 @@ struct GroupSidebar: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                // VStack：分组数量通常有限，避免 LazyVStack 与 Button 组合时偶发命中区域异常
+                VStack(alignment: .leading, spacing: 0) {
                     sidebarSectionHeader(
                         title: "总览",
                         detail: "\(store.assets.count) 张"
@@ -22,7 +23,11 @@ struct GroupSidebar: View {
                     sidebarButton(isSelected: store.selectedGroupID == nil) {
                         store.selectGroup(nil)
                     } label: {
-                        overviewRow(summary: store.summary(for: nil), isSelected: store.selectedGroupID == nil)
+                        overviewRow(
+                            summary: store.summary(for: nil),
+                            isSelected: store.selectedGroupID == nil,
+                            showBottomDivider: true
+                        )
                     }
 
                     if !store.groups.isEmpty {
@@ -33,6 +38,7 @@ struct GroupSidebar: View {
                         )
 
                         ForEach(Array(store.groups.enumerated()), id: \.element.id) { index, group in
+                            let isLastGroup = index == store.groups.count - 1
                             sidebarButton(isSelected: store.selectedGroupID == group.id) {
                                 store.selectGroup(group.id)
                             } label: {
@@ -40,7 +46,8 @@ struct GroupSidebar: View {
                                     index: index + 1,
                                     title: group.name,
                                     summary: store.summary(for: group),
-                                    isSelected: store.selectedGroupID == group.id
+                                    isSelected: store.selectedGroupID == group.id,
+                                    showBottomDivider: !isLastGroup
                                 )
                             }
                         }
@@ -56,19 +63,22 @@ struct GroupSidebar: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(sidebarBackground)
-        .overlay(alignment: .trailing) {
-            Divider()
-        }
+        // 与 HSplitView 自带分隔条重复；叠加时易出现双线，且 Divider 默认命中区域可能吃掉靠右的点击
     }
 
-    private func overviewRow(summary: GroupDecisionSummary, isSelected: Bool) -> some View {
-        sidebarRow(isSelected: isSelected, verticalPadding: 14) {
+    private func overviewRow(
+        summary: GroupDecisionSummary,
+        isSelected: Bool,
+        showBottomDivider: Bool
+    ) -> some View {
+        sidebarRow(isSelected: isSelected, verticalPadding: 14, showBottomDivider: showBottomDivider) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Image(systemName: "square.stack.3d.up.fill")
                         .foregroundStyle(isSelected ? Color.accentColor : .secondary)
                     Text("全部照片")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.subheadline.weight(.medium))
+                        .kerning(DesignType.titleKerning)
                     Spacer()
                     Text("\(summary.total)")
                         .font(.subheadline.monospacedDigit().weight(.semibold))
@@ -76,16 +86,23 @@ struct GroupSidebar: View {
                 }
 
                 Text("推荐 \(summary.recommended) · 已选 \(summary.picked) · 待定 \(summary.pending)")
-                    .font(.caption)
+                    .font(.caption.weight(.light))
                     .foregroundStyle(.secondary)
+                    .kerning(DesignType.bodyKerning)
 
                 GroupProgressBar(summary: summary)
             }
         }
     }
 
-    private func groupRow(index: Int, title: String, summary: GroupDecisionSummary, isSelected: Bool) -> some View {
-        sidebarRow(isSelected: isSelected, verticalPadding: 12) {
+    private func groupRow(
+        index: Int,
+        title: String,
+        summary: GroupDecisionSummary,
+        isSelected: Bool,
+        showBottomDivider: Bool
+    ) -> some View {
+        sidebarRow(isSelected: isSelected, verticalPadding: 12, showBottomDivider: showBottomDivider) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text(String(format: "%02d", index))
@@ -95,6 +112,7 @@ struct GroupSidebar: View {
 
                     Text(title)
                         .font(.subheadline.weight(isSelected ? .semibold : .medium))
+                        .kerning(DesignType.titleKerning)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .help(title)
@@ -103,8 +121,9 @@ struct GroupSidebar: View {
                 }
 
                 Text("共 \(summary.total) 张 · 推荐 \(summary.recommended) · 已选 \(summary.picked)")
-                    .font(.caption)
+                    .font(.caption.weight(.light))
                     .foregroundStyle(.secondary)
+                    .kerning(DesignType.bodyKerning)
 
                 GroupProgressBar(summary: summary)
             }
@@ -112,30 +131,35 @@ struct GroupSidebar: View {
     }
 
     private var emptyGroupsState: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("暂时没有可浏览的分组")
-                .font(.subheadline.weight(.medium))
-            Text("导入完成后会按时间和地点聚合到这里。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(spacing: 12) {
+            Image(systemName: "rectangle.stack.badge.plus")
+                .font(.title2)
+                .foregroundStyle(.quaternary)
+
+            VStack(spacing: 4) {
+                Text("暂无分组")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Text("导入完成后自动按时间和地点聚合。")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
+        .padding(.vertical, 20)
     }
 
     private func sidebarSectionHeader(title: String, detail: String, topPadding: CGFloat = 0) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            Text(title.uppercased())
+                .font(DesignType.sectionLabel())
+                .tracking(DesignType.sectionTracking)
+                .foregroundStyle(.tertiary)
             Spacer()
             Text(detail)
-                .font(.caption.monospacedDigit().weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .font(.caption2.monospacedDigit().weight(.medium))
+                .foregroundStyle(.quaternary)
         }
         .padding(.top, topPadding)
         .padding(.horizontal, 16)
@@ -152,37 +176,43 @@ struct GroupSidebar: View {
             label()
         }
         .buttonStyle(.plain)
-        .contentShape(Rectangle())
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(sidebarBackground)
+        .contentShape(Rectangle())
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func sidebarRow<Content: View>(
         isSelected: Bool,
         verticalPadding: CGFloat,
+        showBottomDivider: Bool,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        ZStack(alignment: .leading) {
-            Rectangle()
-                .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.clear)
-
-            if isSelected {
+        VStack(spacing: 0) {
+            ZStack(alignment: .leading) {
                 Rectangle()
-                    .fill(Color.accentColor)
-                    .frame(width: 3)
-            }
+                    .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.clear)
 
-            VStack(spacing: 0) {
+                if isSelected {
+                    Rectangle()
+                        .fill(Color.accentColor)
+                        .frame(width: 3)
+                }
+
                 content()
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, verticalPadding)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
 
+            if showBottomDivider {
                 Divider()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private var sidebarBackground: Color {
@@ -196,22 +226,25 @@ private struct GroupProgressBar: View {
     var body: some View {
         Canvas { context, size in
             let bounds = CGRect(origin: .zero, size: size)
-            context.fill(Path(bounds), with: .color(.secondary.opacity(0.12)))
+            let radius = min(size.height, 4.0)
+            let bgPath = Path(roundedRect: bounds, cornerRadius: radius)
+            context.fill(bgPath, with: .color(.secondary.opacity(0.12)))
 
             let segments: [(Double, Color)] = [
-                (summary.pickedFraction, .green),
-                (summary.pendingFraction, Color.gray.opacity(0.45)),
-                (summary.rejectedFraction, Color.red.opacity(0.9)),
+                (summary.pickedFraction, LumaSemantic.pick),
+                (summary.pendingFraction, Color.gray.opacity(0.42)),
+                (summary.rejectedFraction, LumaSemantic.reject.opacity(0.92)),
             ]
 
             var originX = bounds.minX
             for (fraction, color) in segments where fraction > 0 {
                 let width = bounds.width * fraction
                 let segmentRect = CGRect(x: originX, y: bounds.minY, width: width, height: bounds.height)
-                context.fill(Path(segmentRect), with: .color(color))
+                context.fill(Path(roundedRect: segmentRect, cornerRadius: radius), with: .color(color))
                 originX += width
             }
         }
-        .frame(height: 6)
+        .frame(height: 5)
+        .clipShape(Capsule())
     }
 }

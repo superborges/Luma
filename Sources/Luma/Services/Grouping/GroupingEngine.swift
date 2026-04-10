@@ -391,6 +391,15 @@ struct GroupingEngine: Sendable {
     var continuityWindowSize: Int = 3
     var visualChangeGapThreshold: TimeInterval = 5 * 60
     var sceneContinuityThreshold: Float = 0.8
+    /// Scene chunks with fewer assets try to merge into an adjacent chunk when time/location allow.
+    var minimumGroupSize: Int = 5
+    /// Max gap between boundary photos to allow merging a small chunk into a neighbor.
+    var mergeTimeThreshold: TimeInterval = 90 * 60
+    /// Adjacent chunks with at most this many assets each may merge across up to `wideMergeWindow` when
+    /// GPS matches (same place) or both chunks have no GPS at all.
+    var wideMergeMaxGroupSize: Int = 8
+    /// Max boundary gap for wide merge (e.g. same venue on different days, or no-GPS imports).
+    var wideMergeWindow: TimeInterval = 30 * 24 * 60 * 60
     var namingTimeZone: TimeZone = .autoupdatingCurrent
     var namingLocale: Locale = Locale(identifier: "zh_Hans")
     var locationNamingProvider: any GroupLocationNamingProvider = CLGeocoderLocationNamingProvider()
@@ -413,18 +422,33 @@ struct GroupingEngine: Sendable {
             ]
         )
 
-        let representativeCoordinates = sceneGroups.map(representativeCoordinate(for:))
+        let mergeStartedAt = Date()
+        let afterShortMerge = mergeSmallGroups(sceneGroups)
+        let mergedGroups = mergeWideWindowGroups(afterShortMerge)
+        RuntimeTrace.metric(
+            "grouping_scene_merge_completed",
+            category: "grouping",
+            metadata: [
+                "asset_count": String(sorted.count),
+                "scene_group_count_before": String(sceneGroups.count),
+                "scene_group_count_after_short": String(afterShortMerge.count),
+                "scene_group_count_after": String(mergedGroups.count),
+                "duration_ms": durationString(since: mergeStartedAt)
+            ]
+        )
+
+        let representativeCoordinates = mergedGroups.map(representativeCoordinate(for:))
         let namingStartedAt = Date()
         let locationNamesByKey = resolvesLocationNames
             ? await resolveLocationNames(for: representativeCoordinates.compactMap { $0 })
             : [:]
 
         var groups: [PhotoGroup] = []
-        groups.reserveCapacity(sceneGroups.count)
+        groups.reserveCapacity(mergedGroups.count)
         var subgroupingDuration: TimeInterval = 0
         var namedGroupCount = 0
 
-        for (chunk, representativeCoordinate) in zip(sceneGroups, representativeCoordinates) {
+        for (chunk, representativeCoordinate) in zip(mergedGroups, representativeCoordinates) {
             let subgroupingStartedAt = Date()
             let subGroupAssets = await visualSubgroupingProvider.subgroupAssets(in: chunk)
             subgroupingDuration += subgroupingStartedAt.distance(to: .now)
@@ -437,7 +461,7 @@ struct GroupingEngine: Sendable {
             groups.append(
                 PhotoGroup(
                     id: UUID(),
-                    name: makeBaseGroupName(for: chunk, resolvedLocationName: locationName),
+                    name: makeSmartGroupName(for: chunk, resolvedLocationName: locationName),
                     assets: chunk.map(\.id),
                     subGroups: makeSubGroups(from: subGroupAssets),
                     timeRange: chunk.first!.metadata.captureDate ... chunk.last!.metadata.captureDate,
@@ -453,7 +477,7 @@ struct GroupingEngine: Sendable {
             category: "grouping",
             metadata: [
                 "asset_count": String(sorted.count),
-                "scene_group_count": String(sceneGroups.count),
+                "scene_group_count": String(mergedGroups.count),
                 "duration_ms": durationString(for: subgroupingDuration)
             ]
         )
@@ -461,7 +485,7 @@ struct GroupingEngine: Sendable {
             "grouping_location_naming_completed",
             category: "grouping",
             metadata: [
-                "group_count": String(sceneGroups.count),
+                "group_count": String(mergedGroups.count),
                 "named_group_count": String(namedGroupCount),
                 "unique_coordinate_count": String(Set(representativeCoordinates.compactMap { $0.map(LocationNameKey.init) }).count),
                 "duration_ms": durationString(since: namingStartedAt)
@@ -495,7 +519,7 @@ struct GroupingEngine: Sendable {
         var updatedGroups = groups.map { group in
             var updatedGroup = group
             let locationName = group.location.flatMap { locationNamesByKey[LocationNameKey($0)] }
-            updatedGroup.name = makeBaseGroupName(for: group.timeRange.lowerBound, resolvedLocationName: locationName)
+            updatedGroup.name = makeSmartGroupName(for: group.timeRange, resolvedLocationName: locationName)
             return updatedGroup
         }
 
@@ -516,6 +540,120 @@ struct GroupingEngine: Sendable {
         )
 
         return updatedGroups
+    }
+
+    /// Merges scene chunks smaller than `minimumGroupSize` into an adjacent chunk when the boundary
+    /// gap is within `mergeTimeThreshold` and GPS (if present) does not indicate a different place.
+    private func mergeSmallGroups(_ groups: [[MediaAsset]]) -> [[MediaAsset]] {
+        guard minimumGroupSize > 1, groups.count > 1 else { return groups }
+        var result = groups
+        while true {
+            var mergedThisPass = false
+            for index in result.indices where result[index].count < minimumGroupSize {
+                let chunk = result[index]
+                guard let first = chunk.first, let last = chunk.last else { continue }
+
+                let gapToPrev: TimeInterval? = index > 0
+                    ? first.metadata.captureDate.timeIntervalSince(result[index - 1].last!.metadata.captureDate)
+                    : nil
+                let gapToNext: TimeInterval? = index < result.count - 1
+                    ? result[index + 1].first!.metadata.captureDate.timeIntervalSince(last.metadata.captureDate)
+                    : nil
+
+                let prevOK = gapToPrev.map { $0 <= mergeTimeThreshold } ?? false
+                    && (index == 0
+                        || allowsMergeAcrossBoundary(left: result[index - 1].last!, right: first))
+                let nextOK = gapToNext.map { $0 <= mergeTimeThreshold } ?? false
+                    && (index >= result.count - 1
+                        || allowsMergeAcrossBoundary(left: last, right: result[index + 1].first!))
+
+                enum Side { case prev, next }
+                let choice: Side? = {
+                    switch (prevOK, nextOK) {
+                    case (true, true):
+                        return (gapToPrev! <= gapToNext!) ? .prev : .next
+                    case (true, false):
+                        return .prev
+                    case (false, true):
+                        return .next
+                    case (false, false):
+                        return nil
+                    }
+                }()
+
+                guard let side = choice else { continue }
+
+                switch side {
+                case .prev:
+                    result[index - 1].append(contentsOf: chunk)
+                    result.remove(at: index)
+                case .next:
+                    result[index].append(contentsOf: result[index + 1])
+                    result.remove(at: index + 1)
+                }
+                mergedThisPass = true
+                break
+            }
+            if !mergedThisPass { break }
+        }
+        return result
+    }
+
+    /// Merges adjacent chunks when both are \"small\", boundary gap ≤ `wideMergeWindow`, and either
+    /// both chunks lack GPS entirely or representative coordinates are within `locationTransitionThreshold`.
+    private func mergeWideWindowGroups(_ groups: [[MediaAsset]]) -> [[MediaAsset]] {
+        guard wideMergeMaxGroupSize > 0, wideMergeWindow > 0, groups.count > 1 else { return groups }
+        var result = groups
+        while true {
+            var mergedThisPass = false
+            for index in result.indices.dropLast() {
+                let left = result[index]
+                let right = result[index + 1]
+                guard left.count <= wideMergeMaxGroupSize, right.count <= wideMergeMaxGroupSize else {
+                    continue
+                }
+                guard let leftLast = left.last, let rightFirst = right.first else { continue }
+                let gap = rightFirst.metadata.captureDate.timeIntervalSince(leftLast.metadata.captureDate)
+                guard gap >= 0, gap <= wideMergeWindow else { continue }
+                // Keep hard same-day session cuts (see `splitByHardTime`); wide merge only across days or sub-hard gaps.
+                if gap >= hardTimeThreshold,
+                   namingCalendar().isDate(leftLast.metadata.captureDate, inSameDayAs: rightFirst.metadata.captureDate) {
+                    continue
+                }
+                guard canWideWindowMerge(left: left, right: right) else { continue }
+
+                result[index] = left + right
+                result.remove(at: index + 1)
+                mergedThisPass = true
+                break
+            }
+            if !mergedThisPass { break }
+        }
+        return result
+    }
+
+    private func canWideWindowMerge(left: [MediaAsset], right: [MediaAsset]) -> Bool {
+        if chunkIsFullyWithoutGPS(left), chunkIsFullyWithoutGPS(right) {
+            return true
+        }
+        guard let cLeft = representativeCoordinate(for: left), let cRight = representativeCoordinate(for: right) else {
+            return false
+        }
+        let l = CLLocation(latitude: cLeft.latitude, longitude: cLeft.longitude)
+        let r = CLLocation(latitude: cRight.latitude, longitude: cRight.longitude)
+        return l.distance(from: r) < locationTransitionThreshold
+    }
+
+    private func chunkIsFullyWithoutGPS(_ chunk: [MediaAsset]) -> Bool {
+        chunk.allSatisfy { $0.metadata.gpsCoordinate == nil }
+    }
+
+    /// When both sides have GPS, block merge across a large jump (same rule scale as scene split).
+    private func allowsMergeAcrossBoundary(left: MediaAsset, right: MediaAsset) -> Bool {
+        guard let distance = coordinateDistance(between: left, and: right) else {
+            return true
+        }
+        return distance < locationTransitionThreshold
     }
 
     private func splitIntoSceneGroups(_ assets: [MediaAsset]) async -> [[MediaAsset]] {
@@ -837,11 +975,34 @@ struct GroupingEngine: Sendable {
         }
     }
 
-    private func makeBaseGroupName(for assets: [MediaAsset], resolvedLocationName: String?) -> String {
-        guard let start = assets.first?.metadata.captureDate else {
+    private func makeSmartGroupName(for chunk: [MediaAsset], resolvedLocationName: String?) -> String {
+        guard let first = chunk.first, let last = chunk.last else {
             return "未命名分组"
         }
-        return makeBaseGroupName(for: start, resolvedLocationName: resolvedLocationName)
+        return makeSmartGroupName(
+            from: first.metadata.captureDate,
+            to: last.metadata.captureDate,
+            resolvedLocationName: resolvedLocationName
+        )
+    }
+
+    private func makeSmartGroupName(for timeRange: ClosedRange<Date>, resolvedLocationName: String?) -> String {
+        makeSmartGroupName(
+            from: timeRange.lowerBound,
+            to: timeRange.upperBound,
+            resolvedLocationName: resolvedLocationName
+        )
+    }
+
+    private func makeSmartGroupName(from start: Date, to end: Date, resolvedLocationName: String?) -> String {
+        if namingCalendar().isDate(start, inSameDayAs: end) {
+            return makeBaseGroupName(for: start, resolvedLocationName: resolvedLocationName)
+        }
+        let rangePart = multiDayDateRangeLabel(from: start, to: end)
+        if let resolvedLocationName, !resolvedLocationName.isEmpty {
+            return "\(resolvedLocationName)·\(rangePart)·多次"
+        }
+        return "\(rangePart)·多日"
     }
 
     private func makeBaseGroupName(for start: Date, resolvedLocationName: String?) -> String {
@@ -849,12 +1010,32 @@ struct GroupingEngine: Sendable {
         if let resolvedLocationName, !resolvedLocationName.isEmpty {
             return "\(resolvedLocationName)·\(period)"
         }
+        return "\(singleDayLabel(for: start))·\(period)"
+    }
 
+    private func singleDayLabel(for date: Date) -> String {
         let dayFormatter = DateFormatter()
         dayFormatter.locale = namingLocale
         dayFormatter.timeZone = namingTimeZone
         dayFormatter.dateFormat = "M月d日"
-        return "\(dayFormatter.string(from: start))·\(period)"
+        return dayFormatter.string(from: date)
+    }
+
+    private func multiDayDateRangeLabel(from start: Date, to end: Date) -> String {
+        let cal = namingCalendar()
+        let sm = cal.component(.month, from: start)
+        let sd = cal.component(.day, from: start)
+        let em = cal.component(.month, from: end)
+        let ed = cal.component(.day, from: end)
+        let sy = cal.component(.year, from: start)
+        let ey = cal.component(.year, from: end)
+        if sy != ey {
+            return "\(sy)年\(sm)月\(sd)日–\(ey)年\(em)月\(ed)日"
+        }
+        if sm == em {
+            return "\(sm)月\(sd)日–\(ed)日"
+        }
+        return "\(sm)月\(sd)日–\(em)月\(ed)日"
     }
 
     private func periodLabel(for date: Date) -> String {

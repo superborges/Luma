@@ -394,19 +394,13 @@
 
 ## Recommended Next Steps
 
-1. 做 `v0.1` 最后一轮人工 release gate：
-   - 导入
-   - 分组校验
-   - Burst 明细浏览
-   - 挑片快捷键
-   - 导出
-   - trace summary
+1. ~~`v0.1` Release Gate~~：**已于 2026-04-11 关闭**（记录见 `MILESTONE_v0.1.md` § Release Gate 验收记录）。
 2. 第一优先先验收最新“后台补地名”版本：
    - 手动导入 `/Users/qinkan/Documents/luma_test_1`
    - 看 `import_grouping_completed`
    - 看 `grouping_background_location_naming_completed`
    - 看组名是否会在导入后异步变成地点名
-3. 再补一轮非 `100LEICA` 的真实数据回归，避免参数只贴合单一数据集。
+3. ~~再补一轮非 `100LEICA` 的真实数据回归~~：`luma_test_1` 已纳入 `run_real_folder_e2e` 常规跑法。
 4. 若主链路仍稳定，再进入一级组 AI 命名。
 5. `winner / best` 继续在另一个 thread 收敛，不要在这里交叉改动。
 

@@ -75,24 +75,30 @@
 - 导出 1 次
 - trace summary 校验 1 次
 
+### 验收记录（Phase D，已完成）
+
+**日期**：2026-04-11  
+
+| 项 | 证据 |
+| --- | --- |
+| 导入 | 负责人工验收；真实目录 E2E `100LEICA`、`luma_test_1` 均通过 |
+| 分组 | 同上 + 手测侧栏分组 UI（点击与分隔线修复后复验） |
+| Burst / strip | 人工验收 |
+| 挑片快捷键 | 人工验收 |
+| 导出 | 人工验收；E2E 覆盖导出 / `shrinkKeep` / `archive video` |
+| trace summary | 人工验收；`TraceSummaryCLITests` 通过；热点见既有 `Artifacts/trace-summary-latest.md`（若本地已生成） |
+
+**本轮自动化**：`swift test` — 60 passed，2 skipped（RealFolder 未设 env 时跳过）；`scripts/run_real_folder_e2e.sh` 对上述两目录各 2/2 通过。
+
 ## Current Assessment
 
-当前项目已经接近 `v0.1`，但还差最后一段：
-
-- 主 APP 关键交互热点已基本收住
-- 自动化回归已经覆盖：
-  - 完整 `swift test` 通过
-  - `/Users/qinkan/Documents/100LEICA` 真实目录导入 / 导出 / `shrinkKeep` / `archive video` 通过
-- 当前主要剩余项：
-  - 再补至少一套不同风格的真实数据回归
-  - 做最后一轮人工 release gate
+`v0.1` **Release Gate 已关闭**。主链路在双真实数据集与全量单元 / 集成测试（除按需跳过的 RealFolder）上保持绿色；已知性能与架构债留在「内测可接受」范围，详见 `Artifacts/architecture-review.md` 与 trace 摘要。
 
 ## Current Priority
 
 `v0.1` 之后的优先级：
 
-1. 主 APP 真实交互性能
-2. 真实数据回归
-3. 人工 release gate 验收
-4. 导入韧性 / 恢复性再收口
-5. AI 命名
+1. 主 APP 真实交互性能（导入阶段热点可按需继续收口）
+2. 导入韧性 / 恢复性再收口
+3. AI 命名（一级组）
+4. 按 `architecture-review` 中 v0.2+ 项逐步拆分 `ProjectStore`、统一错误模型等

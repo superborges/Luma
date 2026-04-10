@@ -1,15 +1,23 @@
 import AppKit
 import SwiftUI
 
+/// 与 `ThumbnailCell` 底栏、`BurstCell` 单张底栏、`BurstThumbnailChip` 信息密度对齐的说明行（相机/尺寸 · 星级）。
+private func workspaceAssetCaptionLine(for asset: MediaAsset) -> String {
+    let camera = asset.metadata.cameraModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let dim = asset.dimensionsDescription
+    let left = camera.isEmpty ? dim : camera
+    return "\(left) · ★\(asset.effectiveRating)"
+}
+
 struct PhotoGrid: View {
     @Bindable var store: ProjectStore
 
     private let burstMinimumWidth: CGFloat = 180
     private let burstMaximumWidth: CGFloat = 260
-    private let burstSpacing: CGFloat = 16
-    private let columns = [
-        GridItem(.adaptive(minimum: 180, maximum: 260), spacing: 16, alignment: .top)
-    ]
+    private var burstSpacing: CGFloat { AppSpacing.xxl }
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: 180, maximum: 260), spacing: AppSpacing.xxl, alignment: .top)]
+    }
 
     init(store: ProjectStore) {
         self.store = store
@@ -19,7 +27,7 @@ struct PhotoGrid: View {
         VStack(spacing: 0) {
             if store.assets.isEmpty {
                 ContentUnavailableView(
-                    "No Project Loaded",
+                    "尚未打开项目",
                     systemImage: "photo.on.rectangle.angled",
                     description: Text("通过工具栏导入照片文件夹、包含 DCIM 的 SD 卡，或 USB 连接的 iPhone。")
                 )
@@ -33,14 +41,24 @@ struct PhotoGrid: View {
                 floatingToolbar
                     .padding(.horizontal, 18)
                     .padding(.bottom, 14)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: store.assets.isEmpty)
     }
 
     private func preheatSeed(for visibleAssets: [MediaAsset]) -> String {
         let scope = store.selectedGroupID?.uuidString ?? "all"
         let first = visibleAssets.first?.id.uuidString ?? "empty"
         return "\(scope)-\(first)-\(visibleAssets.count)"
+    }
+
+    /// 用于连拍网格高亮与展开条：只要当前选中图落在该 burst 内即匹配（含单张伪组，与 `selectedBurstContext` 无关）。
+    private func burstIDContainingSelectedAsset(in bursts: [BurstDisplayGroup]) -> UUID? {
+        guard let selectedAssetID = store.selectedAssetID else { return nil }
+        return bursts.first { burst in
+            burst.assets.contains { $0.id == selectedAssetID }
+        }?.id
     }
 
     private func burstPreheatSeed(for bursts: [BurstDisplayGroup]) -> String {
@@ -53,8 +71,7 @@ struct PhotoGrid: View {
     private var workspaceContent: some View {
         let visibleAssets = store.visibleAssets
         let visibleBursts = store.visibleBurstGroups
-        let visibleBurstOrdinals = Dictionary(uniqueKeysWithValues: visibleBursts.enumerated().map { ($1.id, $0 + 1) })
-        let selectedBurstID = store.selectedBurstContext?.burst.id
+        let selectedBurstID = burstIDContainingSelectedAsset(in: visibleBursts)
 
         if store.displayMode == .single, let asset = store.selectedAsset {
             SingleAssetView(asset: asset, visibleAssets: visibleAssets)
@@ -73,7 +90,6 @@ struct PhotoGrid: View {
                                     ForEach(row) { burst in
                                         BurstCell(
                                             burst: burst,
-                                            burstOrdinal: visibleBurstOrdinals[burst.id] ?? 1,
                                             isSelected: burst.id == selectedBurstID
                                         )
                                         .frame(maxWidth: burstMaximumWidth)
@@ -111,11 +127,12 @@ struct PhotoGrid: View {
                                             store.setDisplayMode(.single)
                                         }
                                     )
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
                                 }
                             }
                         }
                     }
-                    .padding(20)
+                    .padding(AppSpacing.gutter)
                     .padding(.bottom, 80)
                 }
             }
@@ -126,7 +143,7 @@ struct PhotoGrid: View {
             }
         } else {
             ScrollView {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: AppSpacing.xxl) {
                     ForEach(visibleAssets) { asset in
                         ThumbnailCell(
                             asset: asset,
@@ -141,7 +158,7 @@ struct PhotoGrid: View {
                         })
                     }
                 }
-                .padding(20)
+                .padding(AppSpacing.gutter)
                 .padding(.bottom, 80)
             }
             .task(id: preheatSeed(for: visibleAssets)) {
@@ -180,28 +197,14 @@ struct PhotoGrid: View {
 
     private var floatingToolbar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                toolbarActionButton(
-                    shortcut: "P",
-                    title: "已选",
-                    tint: .green
-                ) {
+            HStack(spacing: AppSpacing.lg) {
+                toolbarPickPill(shortcut: "P", title: "已选") {
                     store.markSelection(.picked)
                 }
-
-                toolbarActionButton(
-                    shortcut: "X",
-                    title: "拒绝",
-                    tint: .red
-                ) {
+                toolbarRejectPill(shortcut: "X", title: "拒绝") {
                     store.markSelection(.rejected)
                 }
-
-                toolbarActionButton(
-                    shortcut: "U",
-                    title: "待定",
-                    tint: .secondary
-                ) {
+                toolbarGlassPill(shortcut: "U", title: "待定") {
                     store.clearSelectionDecision()
                 }
 
@@ -216,17 +219,17 @@ struct PhotoGrid: View {
                 toolbarHint(shortcut: store.displayMode == .single ? "双击" : "Space", title: store.displayMode == .single ? "缩放" : "单页")
                 toolbarHint(shortcut: "← →", title: "切换")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, AppRadius.chipOuter)
+            .padding(.vertical, AppSpacing.lg)
         }
         .scrollClipDisabled()
         .frame(maxWidth: 820)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppRadius.toolbar, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppRadius.toolbar, style: .continuous)
+                .strokeBorder(DesignChrome.hairline, lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.12), radius: 20, y: 8)
+        .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
     }
 
     private var hasSelection: Bool {
@@ -247,59 +250,96 @@ struct PhotoGrid: View {
                 store.clearSelectionRating()
             }
         } label: {
-            toolbarPill(shortcut: "1-5", title: "评星", tint: .yellow, isInteractive: true)
+            toolbarMonochromeMenuPill(shortcut: "1-5", title: "评星")
         }
         .menuStyle(.borderlessButton)
         .disabled(!hasSelection)
     }
 
-    private func toolbarActionButton(
-        shortcut: String,
-        title: String,
-        tint: Color,
-        action: @escaping () -> Void
-    ) -> some View {
+    private func toolbarPickPill(shortcut: String, title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            toolbarPill(shortcut: shortcut, title: title, tint: tint, isInteractive: true)
+            HStack(spacing: AppSpacing.md) {
+                Text(shortcut)
+                    .font(.caption2.monospaced().weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.22), in: RoundedRectangle(cornerRadius: AppRadius.chip, style: .continuous))
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 9)
+            .background(LumaSemantic.pick, in: Capsule())
         }
         .buttonStyle(.plain)
         .disabled(!hasSelection)
+        .opacity(hasSelection ? 1 : 0.5)
     }
 
-    private func toolbarHint(shortcut: String, title: String) -> some View {
-        HStack(spacing: 8) {
-            keycap(shortcut, tint: Color.secondary.opacity(0.16), foreground: .secondary)
-
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+    private func toolbarRejectPill(shortcut: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: AppSpacing.md) {
+                keycap(shortcut, tint: LumaSemantic.reject.opacity(0.16), foreground: LumaSemantic.reject)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LumaSemantic.reject)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(LumaSemantic.reject.opacity(0.08), in: Capsule())
+            .overlay(Capsule().stroke(LumaSemantic.reject.opacity(0.55), lineWidth: 1.5))
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Color.white.opacity(0.08), in: Capsule())
+        .buttonStyle(.plain)
+        .disabled(!hasSelection)
+        .opacity(hasSelection ? 1 : 0.5)
     }
 
-    private func toolbarPill(
-        shortcut: String,
-        title: String,
-        tint: Color,
-        isInteractive: Bool
-    ) -> some View {
-        HStack(spacing: 8) {
-            keycap(shortcut, tint: tint.opacity(isInteractive ? 0.18 : 0.12), foreground: tint)
+    /// Glass Dark 次要操作
+    private func toolbarGlassPill(shortcut: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: AppSpacing.md) {
+                keycap(shortcut, tint: DesignChrome.glassDark, foreground: .primary)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(DesignChrome.glassDark, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!hasSelection)
+        .opacity(hasSelection ? 1 : 0.5)
+    }
 
+    private func toolbarMonochromeMenuPill(shortcut: String, title: String) -> some View {
+        HStack(spacing: AppSpacing.md) {
+            keycap(shortcut, tint: LumaSemantic.rating.opacity(0.35), foreground: .primary)
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.primary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(tint.opacity(isInteractive ? 0.12 : 0.08), in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(tint.opacity(isInteractive ? 0.18 : 0.12), lineWidth: 1)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(LumaSemantic.rating.opacity(0.12), in: Capsule())
+        .overlay(Capsule().stroke(DesignChrome.hairline, lineWidth: 1))
+        .opacity(hasSelection ? 1 : 0.5)
+    }
+
+    private func toolbarHint(shortcut: String, title: String) -> some View {
+        HStack(spacing: AppSpacing.md) {
+            keycap(shortcut, tint: DesignChrome.glassDark, foreground: .secondary)
+
+            Text(title)
+                .font(.caption.weight(.light))
+                .foregroundStyle(.secondary)
+                .kerning(DesignType.bodyKerning)
         }
-        .opacity(hasSelection || !isInteractive ? 1 : 0.55)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
+        .background(DesignChrome.glassDark.opacity(0.5), in: Capsule())
     }
 
     private func keycap(_ title: String, tint: Color, foreground: Color = .primary) -> some View {
@@ -309,49 +349,39 @@ struct PhotoGrid: View {
             .lineLimit(1)
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
-            .background(tint, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(tint, in: RoundedRectangle(cornerRadius: AppRadius.chip, style: .continuous))
     }
 }
 
 private struct BurstCell: View {
     let burst: BurstDisplayGroup
-    let burstOrdinal: Int
     let isSelected: Bool
 
     @State private var image: NSImage?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
             previewCard
 
-            Text(burst.coverAsset.baseName)
-                .font(.headline)
+            Text(summaryLabel)
+                .font(.caption.weight(.light))
+                .foregroundStyle(.secondary)
+                .kerning(DesignType.bodyKerning)
                 .lineLimit(1)
-
-            HStack {
-                Text(summaryLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer()
-                if burst.bestAssetID != nil {
-                    Text("Best")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.yellow)
-                }
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .padding(10)
+        .padding(AppSpacing.lg)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.cardOuter, style: .continuous)
                 .fill(backgroundColor)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.cardOuter, style: .continuous)
                 .stroke(selectionBorderColor, lineWidth: isSelected ? 2.5 : 1)
         )
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+        .accessibilityLabel(Text("连拍组，\(summaryLabel)，\(burst.coverAsset.baseName)"))
         .task(id: burst.coverAsset.id) {
             image = await ThumbnailCache.shared.image(for: burst.coverAsset)
         }
@@ -362,7 +392,7 @@ private struct BurstCell: View {
 
     private var summaryLabel: String {
         if burst.count == 1 {
-            return "单张"
+            return workspaceAssetCaptionLine(for: burst.coverAsset)
         }
         return "\(burst.count) 张候选"
     }
@@ -370,25 +400,25 @@ private struct BurstCell: View {
     private var previewCard: some View {
         ZStack(alignment: .center) {
             if burst.count > 1 {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.secondary.opacity(0.08))
+                RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+                    .fill(DesignChrome.cardSurface)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+                            .stroke(DesignChrome.hairline, lineWidth: 1)
                     )
                     .offset(x: 10, y: -10)
 
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
                     .fill(Color.secondary.opacity(0.10))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.white.opacity(0.30), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+                            .stroke(DesignChrome.hairline, lineWidth: 1)
                     )
                     .offset(x: 5, y: -5)
             }
 
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.secondary.opacity(0.12))
+            RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+                .fill(DesignChrome.imageWell)
                 .overlay {
                     if let image {
                         Image(nsImage: image)
@@ -401,61 +431,20 @@ private struct BurstCell: View {
                             .controlSize(.regular)
                     }
                 }
-                .overlay(alignment: .topLeading) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        if burst.count > 1 {
-                            badge("连拍组 \(burstOrdinal)", color: .orange)
-                        }
-
-                        if burst.coverAsset.aiScore?.recommended == true {
-                            badge("AI 推荐", color: .blue)
-                        }
-                    }
-                    .padding(10)
-                }
-                .overlay(alignment: .topTrailing) {
-                    if burst.count > 1 {
-                        Text("x\(burst.count)")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .padding(10)
-                    }
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    if let score = burst.coverAsset.aiScore {
-                        Text("\(score.overall)")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .padding(10)
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
         }
         .aspectRatio(1.1, contentMode: .fit)
-        .padding(.trailing, burst.count > 1 ? 10 : 0)
-        .padding(.top, burst.count > 1 ? 10 : 0)
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.trailing, burst.count > 1 ? AppSpacing.lg : 0)
+        .padding(.top, burst.count > 1 ? AppSpacing.lg : 0)
+        .contentShape(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
     }
 
     private var backgroundColor: Color {
-        isSelected ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.05)
+        isSelected ? Color.accentColor.opacity(0.10) : DesignChrome.cardSurface
     }
 
     private var selectionBorderColor: Color {
-        isSelected ? .accentColor : Color.white.opacity(0.08)
-    }
-
-    private func badge(_ title: String, color: Color) -> some View {
-        Text(title)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(color.opacity(0.92), in: Capsule())
-            .foregroundStyle(.white)
+        isSelected ? Color.accentColor : DesignChrome.hairline
     }
 }
 
@@ -466,15 +455,16 @@ private struct BurstThumbnailStrip: View {
     let onOpen: (UUID) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: AppSpacing.lg) {
             HStack {
                 Text("连拍组明细")
-                    .font(.caption.weight(.semibold))
+                    .font(DesignType.sectionLabel())
+                    .tracking(DesignType.sectionTracking)
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(burst.count) 张")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.caption2.monospacedDigit().weight(.medium))
+                    .foregroundStyle(.tertiary)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -494,11 +484,11 @@ private struct BurstThumbnailStrip: View {
             }
             .scrollClipDisabled()
         }
-        .padding(12)
-        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(AppRadius.chipOuter)
+        .background(DesignChrome.cardSurface, in: RoundedRectangle(cornerRadius: AppRadius.strip, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppRadius.strip, style: .continuous)
+                .stroke(DesignChrome.hairline, lineWidth: 1)
         }
         .onAppear {
             ThumbnailCache.shared.preheat(assets: burst.assets)
@@ -517,44 +507,61 @@ private struct BurstThumbnailChip: View {
     @State private var image: NSImage?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.secondary.opacity(0.12))
-                .overlay {
-                    if let image {
-                        Image(nsImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 120, height: 92)
-                    } else {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
+        RoundedRectangle(cornerRadius: AppRadius.chip, style: .continuous)
+            .fill(DesignChrome.imageWell)
+            .overlay {
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 120, height: 92)
+                        .opacity(asset.userDecision == .rejected || asset.isTechnicallyRejected ? 0.52 : 1)
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
                 }
-                .overlay(alignment: .topLeading) {
-                    HStack(spacing: 6) {
-                        badge("#\(index + 1)", color: .black.opacity(0.72))
+            }
+            .overlay(alignment: .topLeading) {
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    HStack(spacing: AppSpacing.sm) {
+                        DesignChromeBadge(text: "#\(index + 1)")
                         if isBest {
-                            badge("Best", color: .orange)
+                            SemanticCapsuleBadge(text: "最佳", fill: LumaSemantic.best, foreground: .black)
                         }
                     }
-                    .padding(8)
+                    if asset.userDecision == .picked {
+                        SemanticCapsuleBadge(text: "已选", fill: LumaSemantic.pick, compact: true)
+                    } else if asset.userDecision == .rejected {
+                        SemanticCapsuleBadge(text: "已拒", fill: LumaSemantic.reject, compact: true)
+                    }
                 }
-                .frame(width: 120, height: 92)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            Text(asset.baseName)
-                .font(.caption)
-                .lineLimit(1)
-                .frame(width: 120, alignment: .leading)
-        }
-        .padding(6)
-        .background(isSelected ? Color.accentColor.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(8)
+            }
+            .frame(width: 120, height: 92)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.chip, style: .continuous))
+            .padding(AppSpacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: AppRadius.chipOuter, style: .continuous)
+                .fill(chipBackgroundColor)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppRadius.chipOuter, style: .continuous)
+                .stroke(statusBorderColor, lineWidth: statusBorderColor == .clear ? 0 : 1.5)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppRadius.chipOuter + 2, style: .continuous)
+                .stroke(selectionBorderColor, lineWidth: isSelected ? 2.5 : 0)
+                .padding(-2)
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isSelected ? Color.accentColor : Color.white.opacity(0.08), lineWidth: isSelected ? 2 : 1)
+            if idleHairlineBorder {
+                RoundedRectangle(cornerRadius: AppRadius.chipOuter, style: .continuous)
+                    .stroke(DesignChrome.hairline, lineWidth: 1)
+            }
         }
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+        .animation(.easeInOut(duration: 0.15), value: asset.userDecision)
+        .contentShape(RoundedRectangle(cornerRadius: AppRadius.chipOuter, style: .continuous))
         .gesture(TapGesture().onEnded {
             onSelect()
         })
@@ -564,15 +571,38 @@ private struct BurstThumbnailChip: View {
         .task(id: asset.id) {
             image = await ThumbnailCache.shared.image(for: asset)
         }
+        .accessibilityLabel(Text("第 \(index + 1) 张，\(asset.baseName)"))
     }
 
-    private func badge(_ title: String, color: Color) -> some View {
-        Text(title)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(color, in: Capsule())
-            .foregroundStyle(.white)
+    private var chipBackgroundColor: Color {
+        if isSelected {
+            return Color.accentColor.opacity(0.10)
+        }
+        if asset.userDecision == .picked {
+            return LumaSemantic.pick.opacity(0.08)
+        }
+        if asset.userDecision == .rejected {
+            return LumaSemantic.reject.opacity(0.06)
+        }
+        return Color.clear
+    }
+
+    private var statusBorderColor: Color {
+        if asset.userDecision == .picked {
+            return LumaSemantic.pick.opacity(0.45)
+        }
+        if asset.userDecision == .rejected {
+            return LumaSemantic.reject.opacity(0.42)
+        }
+        return .clear
+    }
+
+    private var selectionBorderColor: Color {
+        isSelected ? Color.accentColor : .clear
+    }
+
+    private var idleHairlineBorder: Bool {
+        !isSelected && asset.userDecision == .pending
     }
 }
 
@@ -583,48 +613,54 @@ private struct ThumbnailCell: View {
     @State private var image: NSImage?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
             previewCard
 
-            Text(asset.baseName)
-                .font(.headline)
+            Text(metaLine)
+                .font(.caption.weight(.light))
+                .foregroundStyle(.secondary)
+                .kerning(DesignType.bodyKerning)
                 .lineLimit(1)
-
-            HStack {
-                Text(asset.metadata.cameraModel ?? asset.dimensionsDescription)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer()
-                Text("★\(asset.effectiveRating)")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .padding(10)
+        .padding(AppSpacing.lg)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.cardOuter, style: .continuous)
                 .fill(backgroundColor)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.cardOuter, style: .continuous)
                 .stroke(statusBorderColor, lineWidth: statusBorderColor == .clear ? 0 : 1.5)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(selectionBorderColor, lineWidth: isSelected ? 3 : 0)
+            RoundedRectangle(cornerRadius: AppRadius.cardOuter + 2, style: .continuous)
+                .stroke(selectionBorderColor, lineWidth: isSelected ? 2.5 : 0)
                 .padding(-2)
         )
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+        .animation(.easeInOut(duration: 0.15), value: asset.userDecision)
         .task(id: asset.id) {
             image = await ThumbnailCache.shared.image(for: asset)
         }
+        .accessibilityLabel(Text(thumbnailAccessibilitySummary))
+    }
+
+    private var thumbnailAccessibilitySummary: String {
+        var parts = [asset.baseName, metaLine]
+        if let score = asset.aiScore {
+            parts.append("AI 分 \(score.overall)")
+        }
+        return parts.joined(separator: "，")
+    }
+
+    private var metaLine: String {
+        workspaceAssetCaptionLine(for: asset)
     }
 
     private var previewCard: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(Color.secondary.opacity(0.12))
+        RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+            .fill(DesignChrome.imageWell)
             .overlay {
                 if let image {
                     Image(nsImage: image)
@@ -638,72 +674,53 @@ private struct ThumbnailCell: View {
                 }
             }
             .overlay(alignment: .topLeading) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: AppSpacing.md) {
                     if asset.aiScore?.recommended == true {
-                        badge("AI 推荐", color: .blue)
+                        SemanticCapsuleBadge(text: "AI 推荐", fill: LumaSemantic.ai)
                     }
 
                     if let firstIssue = asset.issues.first {
-                        badge(firstIssue.label, color: .red)
+                        SemanticCapsuleBadge(text: firstIssue.label, fill: LumaSemantic.issue)
                     }
 
                     if asset.userDecision == .picked {
-                        badge("已选", color: .green)
+                        SemanticCapsuleBadge(text: "已选", fill: LumaSemantic.pick)
                     } else if asset.userDecision == .rejected {
-                        badge("已拒", color: .red.opacity(0.85))
+                        SemanticCapsuleBadge(text: "已拒", fill: LumaSemantic.reject)
                     }
                 }
-                .padding(10)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if let score = asset.aiScore {
-                    Text("\(score.overall)")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .padding(10)
-                }
+                .padding(AppSpacing.lg)
             }
             .aspectRatio(1.1, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
     }
 
     private var backgroundColor: Color {
         if isSelected {
-            return Color.accentColor.opacity(0.14)
+            return Color.accentColor.opacity(0.10)
         }
         if asset.userDecision == .picked {
-            return Color.green.opacity(0.08)
+            return LumaSemantic.pick.opacity(0.08)
         }
         if asset.userDecision == .rejected {
-            return Color.red.opacity(0.06)
+            return LumaSemantic.reject.opacity(0.06)
         }
-        return Color.secondary.opacity(0.05)
+        return DesignChrome.cardSurface
     }
 
     private var statusBorderColor: Color {
         if asset.userDecision == .picked {
-            return Color.green.opacity(0.45)
+            return LumaSemantic.pick.opacity(0.45)
         }
         if asset.userDecision == .rejected {
-            return Color.red.opacity(0.42)
+            return LumaSemantic.reject.opacity(0.42)
         }
         return .clear
     }
 
     private var selectionBorderColor: Color {
-        isSelected ? .accentColor : .clear
-    }
-
-    private func badge(_ title: String, color: Color) -> some View {
-        Text(title)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(color.opacity(0.92), in: Capsule())
-            .foregroundStyle(.white)
+        isSelected ? Color.accentColor : .clear
     }
 }
 
@@ -715,32 +732,45 @@ private struct SingleAssetView: View {
     @State private var zoomScale: CGFloat = 1
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             imageStage
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            HStack {
-                Text(asset.baseName)
-                    .font(.title3.weight(.semibold))
-                Spacer()
-                Text(asset.dimensionsDescription)
-                    .foregroundStyle(.secondary)
-            }
-
-            if !asset.issues.isEmpty {
-                HStack {
-                    ForEach(asset.issues) { issue in
-                        Text(issue.label)
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.red.opacity(0.9), in: Capsule())
-                            .foregroundStyle(.white)
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                HStack(alignment: .firstTextBaseline) {
+                    if asset.mediaType != .photo {
+                        Text(singleDetailMediaTypeTitle(asset.mediaType))
+                            .font(.title3.weight(.medium))
+                            .kerning(DesignType.titleKerning)
+                    }
+                    if asset.userDecision == .picked {
+                        singleViewDecisionBadge("已选", color: .green)
+                    } else if asset.userDecision == .rejected {
+                        singleViewDecisionBadge("已拒", color: .red.opacity(0.88))
                     }
                     Spacer()
+                    Text(asset.dimensionsDescription)
+                        .font(.callout.weight(.light))
+                        .foregroundStyle(.secondary)
+                        .kerning(DesignType.bodyKerning)
+                }
+                .animation(.easeInOut(duration: 0.15), value: asset.userDecision)
+
+                if !asset.issues.isEmpty {
+                    HStack(spacing: AppSpacing.sm) {
+                        ForEach(asset.issues) { issue in
+                            SemanticCapsuleBadge(text: issue.label, fill: LumaSemantic.issue)
+                        }
+                        Spacer()
+                    }
                 }
             }
+            .padding(.horizontal, AppSpacing.xxl)
+            .padding(.vertical, AppRadius.chipOuter)
+            .background(.ultraThinMaterial)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .accessibilityLabel(Text("\(asset.baseName)，\(asset.dimensionsDescription)"))
         .task(id: asset.id) {
             await loadImage()
         }
@@ -751,6 +781,17 @@ private struct SingleAssetView: View {
                 let keep = Set(visibleAssets[lowerBound..<upperBound].map(\.id))
                 DisplayImageCache.shared.trim(toRetainAssetIDs: keep)
             }
+        }
+    }
+
+    private func singleDetailMediaTypeTitle(_ type: MediaType) -> String {
+        switch type {
+        case .photo:
+            return "照片"
+        case .livePhoto:
+            return "实况照片"
+        case .portrait:
+            return "人像照片"
         }
     }
 
@@ -773,6 +814,8 @@ private struct SingleAssetView: View {
                                 width: max(fitted.width * zoomScale, fitted.width),
                                 height: max(fitted.height * zoomScale, fitted.height)
                             )
+                            .opacity(asset.userDecision == .rejected || asset.isTechnicallyRejected ? 0.55 : 1)
+                            .animation(.easeInOut(duration: 0.15), value: asset.userDecision)
                             .onTapGesture(count: 2) {
                                 toggleZoom()
                             }
@@ -818,6 +861,15 @@ private struct SingleAssetView: View {
                 "zoom_scale": String(format: "%.2f", zoomScale)
             ]
         )
+    }
+
+    private func singleViewDecisionBadge(_ title: String, color: Color) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(color.opacity(0.92), in: Capsule())
+            .foregroundStyle(.white)
     }
 
     private func loadImage() async {

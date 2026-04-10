@@ -123,26 +123,26 @@ struct ContentView: View {
             Text(prompt.message)
         }
         .alert(
-            "Operation Failed",
+            "操作失败",
             isPresented: Binding(
                 get: { store.lastErrorMessage != nil },
                 set: { if !$0 { store.lastErrorMessage = nil } }
             ),
             presenting: store.lastErrorMessage
         ) { _ in
-            Button("OK", role: .cancel) {}
+            Button("确定", role: .cancel) {}
         } message: { message in
             Text(message)
         }
         .alert(
-            "Export Finished",
+            "导出完成",
             isPresented: Binding(
                 get: { store.lastExportSummary != nil },
                 set: { if !$0 { store.lastExportSummary = nil } }
             ),
             presenting: store.lastExportSummary
         ) { _ in
-            Button("OK", role: .cancel) {}
+            Button("确定", role: .cancel) {}
         } message: { message in
             Text(message)
         }
@@ -237,37 +237,58 @@ private struct StatusBarView: View {
     let store: ProjectStore
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 18) {
+        VStack(spacing: AppSpacing.md) {
+            HStack(spacing: AppSpacing.xxl) {
                 Text(store.projectName)
-                    .font(.headline)
-                Text("\(store.assets.count) 张")
-                    .foregroundStyle(.secondary)
-                Text("\(store.groups.count) 组")
-                    .foregroundStyle(.secondary)
+                    .font(.headline.weight(.medium))
+                    .kerning(DesignType.titleKerning)
+
+                HStack(spacing: AppSpacing.xs) {
+                    Text("\(store.assets.count)")
+                        .font(.callout.monospacedDigit().weight(.medium))
+                    Text("张")
+                        .font(.caption.weight(.light))
+                        .foregroundStyle(.secondary)
+                    Text("·")
+                        .foregroundStyle(.quaternary)
+                    Text("\(store.groups.count)")
+                        .font(.callout.monospacedDigit().weight(.medium))
+                    Text("组")
+                        .font(.caption.weight(.light))
+                        .foregroundStyle(.secondary)
+                }
 
                 Divider()
                     .frame(height: 14)
 
-                label("已选", value: store.pickedCount, color: .green)
-                label("待定", value: store.pendingCount, color: .secondary)
-                label("拒绝", value: store.rejectedCount, color: .red)
-                label("推荐", value: store.recommendedCount, color: .accentColor)
+                statusPill("已选", value: store.pickedCount, tint: LumaSemantic.pick)
+                statusPill("待定", value: store.pendingCount, tint: LumaSemantic.pending)
+                statusPill("拒绝", value: store.rejectedCount, tint: LumaSemantic.reject)
+                statusPill("推荐", value: store.recommendedCount, tint: LumaSemantic.recommend)
 
                 Spacer()
 
                 if store.isLocalScoring {
-                    Text("本地评估 \(store.localScoringCompleted)/\(store.localScoringTotal)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+                    HStack(spacing: 5) {
+                        ProgressView()
+                            .controlSize(.mini)
+                        Text("本地评估 \(store.localScoringCompleted)/\(store.localScoringTotal)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
                 }
 
                 if store.isCloudScoring {
-                    Text("云端评分 \(store.cloudScoringCompleted)/\(store.cloudScoringTotal)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+                    HStack(spacing: 5) {
+                        Image(systemName: "sparkles")
+                            .font(.caption2)
+                            .foregroundStyle(LumaSemantic.ai)
+                        Text("AI 评分中 \(store.cloudScoringCompleted)/\(store.cloudScoringTotal)")
+                            .font(.caption.weight(.light))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
                 }
 
                 if store.importProgress?.phase == .paused {
@@ -287,30 +308,36 @@ private struct StatusBarView: View {
             if store.isLocalScoring {
                 ProgressView(value: store.localScoringFraction)
                     .progressViewStyle(.linear)
+                    .frame(height: 3)
+                    .clipShape(Capsule())
             }
 
             if store.isCloudScoring {
                 ProgressView(value: store.cloudScoringFraction)
                     .progressViewStyle(.linear)
-                    .tint(.blue)
+                    .tint(LumaSemantic.ai)
+                    .frame(height: 3)
+                    .clipShape(Capsule())
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .padding(.horizontal, AppSpacing.section)
+        .padding(.vertical, AppSpacing.lg)
         .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) {
             Divider()
         }
     }
 
-    private func label(_ title: String, value: Int, color: Color) -> some View {
+    private func statusPill(_ title: String, value: Int, tint: Color) -> some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(color)
-                .frame(width: 8, height: 8)
+                .fill(tint.opacity(0.9))
+                .frame(width: 6, height: 6)
             Text("\(title) \(value)")
-                .font(.callout)
+                .font(.callout.weight(.medium))
                 .monospacedDigit()
+                .foregroundStyle(.primary)
+                .kerning(DesignType.bodyKerning)
         }
     }
 }

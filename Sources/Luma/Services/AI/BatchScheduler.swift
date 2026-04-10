@@ -31,7 +31,7 @@ struct BatchSchedulerResult {
     let costRecords: [CostRecord]
 }
 
-final class BatchScheduler: BatchScheduling, @unchecked Sendable {
+struct BatchScheduler: BatchScheduling {
     func scoreGroups(
         _ groups: [PhotoGroup],
         assetsByID: [UUID: MediaAsset],

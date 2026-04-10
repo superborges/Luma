@@ -1,19 +1,27 @@
 {
   "categoryCounts" : [
     {
-      "count" : 99,
+      "count" : 115,
       "name" : "state"
     },
     {
-      "count" : 68,
+      "count" : 71,
       "name" : "grouping"
+    },
+    {
+      "count" : 50,
+      "name" : "interaction"
+    },
+    {
+      "count" : 15,
+      "name" : "culling"
     },
     {
       "count" : 14,
       "name" : "import"
     },
     {
-      "count" : 7,
+      "count" : 6,
       "name" : "app"
     },
     {
@@ -21,241 +29,260 @@
       "name" : "project"
     }
   ],
-  "firstTimestamp" : "2026-04-05T01:36:10Z",
-  "generatedAt" : "2026-04-05T01:36:54Z",
-  "lastTimestamp" : "2026-04-05T01:36:41Z",
+  "firstTimestamp" : "2026-04-10T16:52:08Z",
+  "generatedAt" : "2026-04-10T16:54:04Z",
+  "lastTimestamp" : "2026-04-10T16:53:43Z",
   "levelCounts" : [
     {
-      "count" : 112,
+      "count" : 166,
       "name" : "metric"
     },
     {
-      "count" : 77,
+      "count" : 106,
       "name" : "info"
     }
   ],
   "metricSummaries" : [
     {
-      "averageDurationMs" : 11914.37,
+      "averageDurationMs" : 8929.11,
       "category" : "import",
       "count" : 1,
-      "maxDurationMs" : 11914.37,
+      "maxDurationMs" : 8929.11,
       "name" : "import_completed",
-      "p50DurationMs" : 11914.37,
-      "p95DurationMs" : 11914.37
+      "p50DurationMs" : 8929.11,
+      "p95DurationMs" : 8929.11
     },
     {
-      "averageDurationMs" : 9242.26,
+      "averageDurationMs" : 6078.39,
+      "category" : "grouping",
+      "count" : 1,
+      "maxDurationMs" : 6078.39,
+      "name" : "group_names_refreshed",
+      "p50DurationMs" : 6078.39,
+      "p95DurationMs" : 6078.39
+    },
+    {
+      "averageDurationMs" : 5233,
+      "category" : "grouping",
+      "count" : 2,
+      "maxDurationMs" : 6078,
+      "name" : "grouping_background_location_naming_completed",
+      "p50DurationMs" : 6078,
+      "p95DurationMs" : 6078
+    },
+    {
+      "averageDurationMs" : 4405.49,
       "category" : "import",
       "count" : 1,
-      "maxDurationMs" : 9242.26,
+      "maxDurationMs" : 4405.49,
       "name" : "import_run_completed",
-      "p50DurationMs" : 9242.26,
-      "p95DurationMs" : 9242.26
+      "p50DurationMs" : 4405.49,
+      "p95DurationMs" : 4405.49
     },
     {
-      "averageDurationMs" : 6956.34,
+      "averageDurationMs" : 2014.5,
       "category" : "import",
       "count" : 1,
-      "maxDurationMs" : 6956.34,
+      "maxDurationMs" : 2014.5,
       "name" : "import_grouping_completed",
-      "p50DurationMs" : 6956.34,
-      "p95DurationMs" : 6956.34
+      "p50DurationMs" : 2014.5,
+      "p95DurationMs" : 2014.5
     },
     {
-      "averageDurationMs" : 6956,
+      "averageDurationMs" : 2014,
       "category" : "grouping",
       "count" : 1,
-      "maxDurationMs" : 6956,
+      "maxDurationMs" : 2014,
       "name" : "grouping_completed",
-      "p50DurationMs" : 6956,
-      "p95DurationMs" : 6956
+      "p50DurationMs" : 2014,
+      "p95DurationMs" : 2014
     },
     {
-      "averageDurationMs" : 6299,
-      "category" : "grouping",
-      "count" : 1,
-      "maxDurationMs" : 6299,
-      "name" : "grouping_location_naming_completed",
-      "p50DurationMs" : 6299,
-      "p95DurationMs" : 6299
-    },
-    {
-      "averageDurationMs" : 1913.32,
+      "averageDurationMs" : 1986.61,
       "category" : "import",
       "count" : 1,
-      "maxDurationMs" : 1913.32,
+      "maxDurationMs" : 1986.61,
       "name" : "initial_manifest_built",
-      "p50DurationMs" : 1913.32,
-      "p95DurationMs" : 1913.32
+      "p50DurationMs" : 1986.61,
+      "p95DurationMs" : 1986.61
     },
     {
-      "averageDurationMs" : 1528.97,
+      "averageDurationMs" : 1417,
       "category" : "grouping",
       "count" : 1,
-      "maxDurationMs" : 1528.97,
+      "maxDurationMs" : 1417,
+      "name" : "grouping_location_naming_completed",
+      "p50DurationMs" : 1417,
+      "p95DurationMs" : 1417
+    },
+    {
+      "averageDurationMs" : 1413.52,
+      "category" : "grouping",
+      "count" : 1,
+      "maxDurationMs" : 1413.52,
       "name" : "grouping_subgrouping_completed",
-      "p50DurationMs" : 1528.97,
-      "p95DurationMs" : 1528.97
+      "p50DurationMs" : 1413.52,
+      "p95DurationMs" : 1413.52
     },
     {
-      "averageDurationMs" : 656,
+      "averageDurationMs" : 596,
       "category" : "grouping",
       "count" : 1,
-      "maxDurationMs" : 656,
+      "maxDurationMs" : 596,
       "name" : "grouping_scene_split_completed",
-      "p50DurationMs" : 656,
-      "p95DurationMs" : 656
-    },
-    {
-      "averageDurationMs" : 205.22,
-      "category" : "import",
-      "count" : 1,
-      "maxDurationMs" : 205.22,
-      "name" : "preview_copy_completed",
-      "p50DurationMs" : 205.22,
-      "p95DurationMs" : 205.22
-    },
-    {
-      "averageDurationMs" : 135.08,
-      "category" : "import",
-      "count" : 1,
-      "maxDurationMs" : 135.08,
-      "name" : "import_source_enumerated",
-      "p50DurationMs" : 135.08,
-      "p95DurationMs" : 135.08
+      "p50DurationMs" : 596,
+      "p95DurationMs" : 596
     }
   ],
   "monitoredHotspots" : [
     {
-      "averageDurationMs" : 6956.34,
+      "averageDurationMs" : 2014.5,
       "breachCount" : 1,
       "budgetMs" : 1000,
       "category" : "import",
       "count" : 1,
-      "maxDurationMs" : 6956.34,
+      "maxDurationMs" : 2014.5,
       "name" : "import_grouping_completed",
-      "p95DurationMs" : 6956.34
+      "p95DurationMs" : 2014.5
     },
     {
-      "averageDurationMs" : 1913.32,
+      "averageDurationMs" : 1986.61,
       "breachCount" : 1,
       "budgetMs" : 1000,
       "category" : "import",
       "count" : 1,
-      "maxDurationMs" : 1913.32,
+      "maxDurationMs" : 1986.61,
       "name" : "initial_manifest_built",
-      "p95DurationMs" : 1913.32
+      "p95DurationMs" : 1986.61
     },
     {
-      "averageDurationMs" : 26.32,
+      "averageDurationMs" : 31.33,
       "breachCount" : 0,
       "budgetMs" : 80,
       "category" : "app",
       "count" : 1,
-      "maxDurationMs" : 26.32,
+      "maxDurationMs" : 31.33,
       "name" : "bootstrap_completed",
-      "p95DurationMs" : 26.32
+      "p95DurationMs" : 31.33
     },
     {
-      "averageDurationMs" : 0.30474747474747477,
+      "averageDurationMs" : 0.358782608695652,
       "breachCount" : 0,
       "budgetMs" : 8,
       "category" : "state",
-      "count" : 99,
-      "maxDurationMs" : 0.37,
+      "count" : 115,
+      "maxDurationMs" : 1.1,
       "name" : "derived_state_rebuilt",
-      "p95DurationMs" : 0.33
+      "p95DurationMs" : 0.82
+    },
+    {
+      "averageDurationMs" : 0.496875,
+      "breachCount" : 0,
+      "budgetMs" : 16,
+      "category" : "interaction",
+      "count" : 16,
+      "maxDurationMs" : 0.78,
+      "name" : "group_selected",
+      "p95DurationMs" : 0.73
+    },
+    {
+      "averageDurationMs" : 0.11,
+      "breachCount" : 0,
+      "budgetMs" : 8,
+      "category" : "interaction",
+      "count" : 4,
+      "maxDurationMs" : 0.14,
+      "name" : "asset_selected",
+      "p95DurationMs" : 0.14
     }
   ],
   "parseFailureCount" : 0,
   "recentErrors" : [
 
   ],
-  "recordCount" : 189,
-  "sessionID" : "D7D98F70-C93B-4246-81E8-9A29E00928AC",
+  "recordCount" : 272,
+  "sessionID" : "736A80E5-095B-4A4F-9DB9-0B43F7ADDE40",
   "slowSamples" : [
     {
       "category" : "import",
-      "durationMs" : 11914.37,
+      "durationMs" : 8929.11,
       "name" : "import_completed",
-      "sequence" : 96,
-      "summary" : "project_name=luma_test_1 selected_group_id=all selected_asset_id=D4FCF0FE-D8B2-4108-A7E1-DA46AF618CB9",
-      "timestamp" : "2026-04-05T01:36:40Z"
+      "sequence" : 95,
+      "summary" : "project_name=luma_test_1 selected_group_id=all selected_asset_id=CE28C065-F60F-43C2-B9AD-0FDBA3E7A796",
+      "timestamp" : "2026-04-10T16:52:20Z"
+    },
+    {
+      "category" : "grouping",
+      "durationMs" : 6078.39,
+      "name" : "group_names_refreshed",
+      "sequence" : 192,
+      "summary" : "project_name=luma_test_1 selected_group_id=all selected_asset_id=CE28C065-F60F-43C2-B9AD-0FDBA3E7A796",
+      "timestamp" : "2026-04-10T16:52:26Z"
+    },
+    {
+      "category" : "grouping",
+      "durationMs" : 6078,
+      "name" : "grouping_background_location_naming_completed",
+      "sequence" : 190,
+      "timestamp" : "2026-04-10T16:52:26Z"
     },
     {
       "category" : "import",
-      "durationMs" : 9242.26,
+      "durationMs" : 4405.49,
       "name" : "import_run_completed",
-      "sequence" : 93,
-      "summary" : "project_name=luma_test_1 phase=finalizing source_name=luma_test_1",
-      "timestamp" : "2026-04-05T01:36:40Z"
-    },
-    {
-      "category" : "import",
-      "durationMs" : 6956.34,
-      "name" : "import_grouping_completed",
       "sequence" : 92,
       "summary" : "project_name=luma_test_1 phase=finalizing source_name=luma_test_1",
-      "timestamp" : "2026-04-05T01:36:40Z"
+      "timestamp" : "2026-04-10T16:52:20Z"
     },
     {
       "category" : "grouping",
-      "durationMs" : 6956,
-      "name" : "grouping_completed",
+      "durationMs" : 4388,
+      "name" : "grouping_background_location_naming_completed",
+      "sequence" : 189,
+      "timestamp" : "2026-04-10T16:52:24Z"
+    },
+    {
+      "category" : "import",
+      "durationMs" : 2014.5,
+      "name" : "import_grouping_completed",
       "sequence" : 91,
-      "timestamp" : "2026-04-05T01:36:40Z"
+      "summary" : "project_name=luma_test_1 phase=finalizing source_name=luma_test_1",
+      "timestamp" : "2026-04-10T16:52:20Z"
     },
     {
       "category" : "grouping",
-      "durationMs" : 6299,
-      "name" : "grouping_location_naming_completed",
+      "durationMs" : 2014,
+      "name" : "grouping_completed",
       "sequence" : 90,
-      "timestamp" : "2026-04-05T01:36:40Z"
+      "timestamp" : "2026-04-10T16:52:20Z"
     },
     {
       "category" : "import",
-      "durationMs" : 1913.32,
+      "durationMs" : 1986.61,
       "name" : "initial_manifest_built",
-      "sequence" : 16,
+      "sequence" : 15,
       "summary" : "project_name=luma_test_1 phase=preparingThumbnails source_name=luma_test_1",
-      "timestamp" : "2026-04-05T01:36:32Z"
+      "timestamp" : "2026-04-10T16:52:17Z"
     },
     {
       "category" : "grouping",
-      "durationMs" : 1528.97,
-      "name" : "grouping_subgrouping_completed",
+      "durationMs" : 1417,
+      "name" : "grouping_location_naming_completed",
       "sequence" : 89,
-      "timestamp" : "2026-04-05T01:36:40Z"
+      "timestamp" : "2026-04-10T16:52:20Z"
     },
     {
       "category" : "grouping",
-      "durationMs" : 656,
-      "name" : "grouping_scene_split_completed",
-      "sequence" : 29,
-      "timestamp" : "2026-04-05T01:36:33Z"
-    },
-    {
-      "category" : "import",
-      "durationMs" : 205.22,
-      "name" : "preview_copy_completed",
-      "sequence" : 19,
-      "summary" : "project_name=luma_test_1 phase=copyingPreviews source_name=luma_test_1",
-      "timestamp" : "2026-04-05T01:36:33Z"
-    },
-    {
-      "category" : "import",
-      "durationMs" : 135.08,
-      "name" : "import_source_enumerated",
-      "sequence" : 14,
-      "summary" : "project_name=luma_test_1 phase=scanning source_name=luma_test_1",
-      "timestamp" : "2026-04-05T01:36:30Z"
+      "durationMs" : 1413.52,
+      "name" : "grouping_subgrouping_completed",
+      "sequence" : 88,
+      "timestamp" : "2026-04-10T16:52:20Z"
     }
   ],
   "topEvents" : [
     {
       "category" : "state",
-      "count" : 99,
+      "count" : 115,
       "level" : "metric",
       "name" : "derived_state_rebuilt"
     },
@@ -264,6 +291,30 @@
       "count" : 59,
       "level" : "info",
       "name" : "burst_candidate"
+    },
+    {
+      "category" : "interaction",
+      "count" : 16,
+      "level" : "metric",
+      "name" : "group_selected"
+    },
+    {
+      "category" : "culling",
+      "count" : 15,
+      "level" : "info",
+      "name" : "decision_updated"
+    },
+    {
+      "category" : "interaction",
+      "count" : 15,
+      "level" : "info",
+      "name" : "key_command_handled"
+    },
+    {
+      "category" : "interaction",
+      "count" : 15,
+      "level" : "metric",
+      "name" : "selection_moved"
     },
     {
       "category" : "grouping",
@@ -278,40 +329,16 @@
       "name" : "import_phase_changed"
     },
     {
-      "category" : "app",
+      "category" : "interaction",
       "count" : 4,
+      "level" : "metric",
+      "name" : "asset_selected"
+    },
+    {
+      "category" : "app",
+      "count" : 3,
       "level" : "info",
       "name" : "app_activation_attempted"
-    },
-    {
-      "category" : "app",
-      "count" : 1,
-      "level" : "metric",
-      "name" : "bootstrap_completed"
-    },
-    {
-      "category" : "app",
-      "count" : 1,
-      "level" : "info",
-      "name" : "bootstrap_started"
-    },
-    {
-      "category" : "app",
-      "count" : 1,
-      "level" : "info",
-      "name" : "session_started"
-    },
-    {
-      "category" : "grouping",
-      "count" : 1,
-      "level" : "metric",
-      "name" : "grouping_completed"
-    },
-    {
-      "category" : "grouping",
-      "count" : 1,
-      "level" : "metric",
-      "name" : "grouping_location_naming_completed"
     }
   ],
   "tracePath" : "\/Users\/qinkan\/Library\/Application Support\/Luma\/Diagnostics\/runtime-latest.jsonl",
@@ -319,17 +346,162 @@
     {
       "budgetMs" : 150,
       "category" : "app",
-      "maxStageDurationMs" : 26.32,
+      "maxStageDurationMs" : 31.33,
       "name" : "bootstrap_completed",
       "overBudget" : false,
       "sequence" : 7,
       "stageCount" : 1,
       "stages" : [
-        "app\/bootstrap_completed 26.32ms"
+        "app\/bootstrap_completed 31.33ms"
       ],
-      "summary" : "project_name=luma_test_1 selected_group_id=all selected_asset_id=8B29F849-9655-4849-90D1-C84D1AFD0545",
-      "timestamp" : "2026-04-05T01:36:10Z",
-      "totalDurationMs" : 26.32
+      "summary" : "project_name=luma_test_1 selected_group_id=all selected_asset_id=D4FCF0FE-D8B2-4108-A7E1-DA46AF618CB9",
+      "timestamp" : "2026-04-10T16:52:08Z",
+      "totalDurationMs" : 31.33
+    },
+    {
+      "budgetMs" : 120,
+      "category" : "interaction",
+      "maxStageDurationMs" : 0.83,
+      "name" : "group_selected",
+      "overBudget" : false,
+      "sequence" : 249,
+      "stageCount" : 5,
+      "stages" : [
+        "interaction\/group_selected 0.55ms",
+        "state\/derived_state_rebuilt 0.83ms",
+        "interaction\/selection_moved 0.06ms",
+        "state\/derived_state_rebuilt 0.62ms",
+        "interaction\/selection_moved 0.02ms"
+      ],
+      "summary" : "project_name=luma_test_1 group_id=CDE450B5-0DA6-4CAE-B911-A1EF81389E98 selected_group_id=CDE450B5-0DA6-4CAE-B911-A1EF81389E98 selected_asset_id=E622B36A-506C-412A-AB80-7FB00A9B3952",
+      "timestamp" : "2026-04-10T16:53:33Z",
+      "totalDurationMs" : 2.08
+    },
+    {
+      "budgetMs" : 120,
+      "category" : "interaction",
+      "maxStageDurationMs" : 0.82,
+      "name" : "group_selected",
+      "overBudget" : false,
+      "sequence" : 231,
+      "stageCount" : 5,
+      "stages" : [
+        "interaction\/group_selected 0.35ms",
+        "state\/derived_state_rebuilt 0.82ms",
+        "interaction\/selection_moved 0.11ms",
+        "state\/derived_state_rebuilt 0.60ms",
+        "interaction\/selection_moved 0.02ms"
+      ],
+      "summary" : "project_name=luma_test_1 group_id=4BBF0AE2-882E-44D3-9861-832A54040FF9 selected_group_id=4BBF0AE2-882E-44D3-9861-832A54040FF9 selected_asset_id=2D28164A-4805-4581-924D-341ABC7DFB9B",
+      "timestamp" : "2026-04-10T16:53:23Z",
+      "totalDurationMs" : 1.9
+    },
+    {
+      "budgetMs" : 120,
+      "category" : "interaction",
+      "maxStageDurationMs" : 1.1,
+      "name" : "group_selected",
+      "overBudget" : false,
+      "sequence" : 258,
+      "stageCount" : 3,
+      "stages" : [
+        "interaction\/group_selected 0.44ms",
+        "state\/derived_state_rebuilt 1.10ms",
+        "interaction\/selection_moved 0.10ms"
+      ],
+      "summary" : "project_name=luma_test_1 group_id=21B757E0-3C92-4E58-A8B8-ECAACE591B9C selected_group_id=21B757E0-3C92-4E58-A8B8-ECAACE591B9C selected_asset_id=BFEBF8AD-6695-4132-A31E-2B4612D1CB92",
+      "timestamp" : "2026-04-10T16:53:36Z",
+      "totalDurationMs" : 1.6400000000000001
+    },
+    {
+      "budgetMs" : 120,
+      "category" : "interaction",
+      "maxStageDurationMs" : 0.78,
+      "name" : "group_selected",
+      "overBudget" : false,
+      "sequence" : 199,
+      "stageCount" : 1,
+      "stages" : [
+        "interaction\/group_selected 0.78ms"
+      ],
+      "summary" : "project_name=luma_test_1 group_id=1C2FEF69-D429-48FF-A55E-42CA8B9A5CDF selected_group_id=1C2FEF69-D429-48FF-A55E-42CA8B9A5CDF selected_asset_id=7132E6C4-4210-4EA2-9636-2A40B600D0D7",
+      "timestamp" : "2026-04-10T16:52:43Z",
+      "totalDurationMs" : 0.78
+    },
+    {
+      "budgetMs" : 120,
+      "category" : "interaction",
+      "maxStageDurationMs" : 0.73,
+      "name" : "group_selected",
+      "overBudget" : false,
+      "sequence" : 198,
+      "stageCount" : 1,
+      "stages" : [
+        "interaction\/group_selected 0.73ms"
+      ],
+      "summary" : "project_name=luma_test_1 group_id=A7CFAC1D-EA7C-4D4B-BA47-EC6A2EBFFE88 selected_group_id=A7CFAC1D-EA7C-4D4B-BA47-EC6A2EBFFE88 selected_asset_id=DC31891D-DE91-4941-87AE-FC75F50FB232",
+      "timestamp" : "2026-04-10T16:52:42Z",
+      "totalDurationMs" : 0.73
+    },
+    {
+      "budgetMs" : 120,
+      "category" : "interaction",
+      "maxStageDurationMs" : 0.71,
+      "name" : "group_selected",
+      "overBudget" : false,
+      "sequence" : 203,
+      "stageCount" : 1,
+      "stages" : [
+        "interaction\/group_selected 0.71ms"
+      ],
+      "summary" : "project_name=luma_test_1 group_id=3D968A3E-B9BE-4834-B816-4045CD332C79 selected_group_id=3D968A3E-B9BE-4834-B816-4045CD332C79 selected_asset_id=88DE5F8D-B399-4E6C-B8F9-E6A5D64B7951",
+      "timestamp" : "2026-04-10T16:52:57Z",
+      "totalDurationMs" : 0.71
+    },
+    {
+      "budgetMs" : 120,
+      "category" : "interaction",
+      "maxStageDurationMs" : 0.55,
+      "name" : "group_selected",
+      "overBudget" : false,
+      "sequence" : 204,
+      "stageCount" : 1,
+      "stages" : [
+        "interaction\/group_selected 0.55ms"
+      ],
+      "summary" : "project_name=luma_test_1 group_id=8105AFD7-6E94-4862-B034-488522EE5596 selected_group_id=8105AFD7-6E94-4862-B034-488522EE5596 selected_asset_id=5842857E-609E-4670-AC67-9209BADB37CA",
+      "timestamp" : "2026-04-10T16:52:59Z",
+      "totalDurationMs" : 0.55
+    },
+    {
+      "budgetMs" : 120,
+      "category" : "interaction",
+      "maxStageDurationMs" : 0.55,
+      "name" : "group_selected",
+      "overBudget" : false,
+      "sequence" : 201,
+      "stageCount" : 1,
+      "stages" : [
+        "interaction\/group_selected 0.55ms"
+      ],
+      "summary" : "project_name=luma_test_1 group_id=8105AFD7-6E94-4862-B034-488522EE5596 selected_group_id=8105AFD7-6E94-4862-B034-488522EE5596 selected_asset_id=5842857E-609E-4670-AC67-9209BADB37CA",
+      "timestamp" : "2026-04-10T16:52:51Z",
+      "totalDurationMs" : 0.55
+    },
+    {
+      "budgetMs" : 120,
+      "category" : "interaction",
+      "maxStageDurationMs" : 0.5,
+      "name" : "group_selected",
+      "overBudget" : false,
+      "sequence" : 200,
+      "stageCount" : 1,
+      "stages" : [
+        "interaction\/group_selected 0.50ms"
+      ],
+      "summary" : "project_name=luma_test_1 group_id=2E13ED5C-10A6-47AD-A4C5-885A4F9B4370 selected_group_id=2E13ED5C-10A6-47AD-A4C5-885A4F9B4370 selected_asset_id=C0B9E1BB-B28F-4E9C-AD8B-2DDAD8D8D913",
+      "timestamp" : "2026-04-10T16:52:50Z",
+      "totalDurationMs" : 0.5
     }
   ]
 }

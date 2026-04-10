@@ -1,5 +1,10 @@
 IMPORTANT: Go straight to the point. Try the simplest approach first without going in circles. Do not overdo it. Be extra concise.
 
+After **any** code change that affects the macOS app, the agent must **build and launch Luma in the background** so the user can verify immediately:
+`swift build` then run `.build/arm64-apple-macosx/debug/Luma` (use `swift build --show-bin-path` if the triple differs). Do not skip this unless the user explicitly opts out for that turn.
+
+UI 改动对话以 **`Artifacts/ui-regions.md`** 里的点分代号为准（例：`main.workspace.burst.chip`）；间距/圆角优先用 **`Sources/Luma/Design/AppMetrics.swift`** 的 `AppSpacing` / `AppRadius`，避免各说各话。
+
 Keep your text output brief and direct. Lead with the answer or action, not the reasoning. Skip filler words, preamble, and unnecessary transitions. Do not restate what the user said — just do it. When explaining, include only what is necessary for the user to understand.
 
 Focus text output on:

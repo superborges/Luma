@@ -22,11 +22,10 @@ final class GroupingEngineTests: XCTestCase {
             visualSubgroupingProvider: StubVisualSubgroupingProvider()
         ).makeGroups(from: [asset3, asset1, asset2])
 
-        XCTAssertEqual(groups.count, 2)
-        XCTAssertEqual(groups[0].assets, [asset1.id, asset2.id])
-        XCTAssertEqual(groups[1].assets, [asset3.id])
+        // Small scene chunks merge across sub-90min gap when GPS does not block.
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups[0].assets, [asset1.id, asset2.id, asset3.id])
         XCTAssertEqual(groups[0].name, "4月4日·上午")
-        XCTAssertEqual(groups[1].name, "4月4日·上午·2")
     }
 
     func testMakeGroupsSplitsByDBSCANLocationClusters() async {
@@ -177,6 +176,172 @@ final class GroupingEngineTests: XCTestCase {
         XCTAssertEqual(group.subGroups[1].assets, [asset3.id])
         XCTAssertEqual(group.subGroups[1].bestAsset, asset3.id)
         XCTAssertEqual(group.recommendedAssets, [asset1.id])
+    }
+
+    func testMergeSmallGroupsPrefersCloserNeighbor() async {
+        let base = TestFixtures.makeDate(hour: 9, minute: 0)
+        let chunk1 = (0 ..< 4).map { minute in
+            TestFixtures.makeAsset(
+                baseName: "IMG_M1_\(minute)",
+                captureDate: Calendar.current.date(byAdding: .minute, value: minute, to: base)!,
+            )
+        }
+        let gapStart = Calendar.current.date(byAdding: .minute, value: 37, to: chunk1[3].metadata.captureDate)!
+        let chunk2 = [0, 1].map { offset in
+            TestFixtures.makeAsset(
+                baseName: "IMG_M2_\(offset)",
+                captureDate: Calendar.current.date(byAdding: .minute, value: offset, to: gapStart)!,
+            )
+        }
+        let gapStart3 = Calendar.current.date(byAdding: .minute, value: 39, to: chunk2[1].metadata.captureDate)!
+        let chunk3 = (0 ..< 4).map { minute in
+            TestFixtures.makeAsset(
+                baseName: "IMG_M3_\(minute)",
+                captureDate: Calendar.current.date(byAdding: .minute, value: minute, to: gapStart3)!,
+            )
+        }
+
+        let allAssets = chunk1 + chunk2 + chunk3
+        let groups = await GroupingEngine(
+            minimumGroupSize: 4,
+            wideMergeMaxGroupSize: 4,
+            namingTimeZone: TestFixtures.shanghaiTimeZone,
+            locationNamingProvider: StubLocationNamingProvider(),
+            visualSubgroupingProvider: StubVisualSubgroupingProvider()
+        ).makeGroups(from: allAssets)
+
+        XCTAssertEqual(groups.count, 2)
+        // Middle pair merges into previous chunk (37m gap vs 39m to next).
+        XCTAssertEqual(groups[0].assets.count, 6)
+        XCTAssertEqual(groups[1].assets.count, 4)
+    }
+
+    func testSmallGroupNotMergedWhenGapExceedsMergeThreshold() async {
+        let base = TestFixtures.makeDate(hour: 9, minute: 0)
+        let asset1 = TestFixtures.makeAsset(baseName: "IMG_G1", captureDate: base)
+        let asset2 = TestFixtures.makeAsset(
+            baseName: "IMG_G2",
+            captureDate: Calendar.current.date(byAdding: .minute, value: 1, to: base)!,
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TestFixtures.shanghaiTimeZone
+        // > wideMergeWindow (30d) so neither short nor wide merge applies; > 30min scene split.
+        let asset3 = TestFixtures.makeAsset(
+            baseName: "IMG_G3",
+            captureDate: calendar.date(byAdding: .day, value: 32, to: asset2.metadata.captureDate)!,
+        )
+        let asset4 = TestFixtures.makeAsset(
+            baseName: "IMG_G4",
+            captureDate: calendar.date(byAdding: .minute, value: 1, to: asset3.metadata.captureDate)!,
+        )
+
+        let groups = await GroupingEngine(
+            namingTimeZone: TestFixtures.shanghaiTimeZone,
+            locationNamingProvider: StubLocationNamingProvider(),
+            visualSubgroupingProvider: StubVisualSubgroupingProvider()
+        ).makeGroups(from: [asset1, asset2, asset3, asset4])
+
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups[0].assets, [asset1.id, asset2.id])
+        XCTAssertEqual(groups[1].assets, [asset3.id, asset4.id])
+    }
+
+    func testWideMergeSameLocationWithin30Days() async {
+        let location = Coordinate(latitude: 39.9163, longitude: 116.3972)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TestFixtures.shanghaiTimeZone
+        let day1 = TestFixtures.makeDate(hour: 10, minute: 0)
+        let chunk1 = (0 ..< 3).map { offset in
+            TestFixtures.makeAsset(
+                baseName: "IMG_W1_\(offset)",
+                captureDate: calendar.date(byAdding: .minute, value: offset, to: day1)!,
+                coordinate: location,
+            )
+        }
+        let day2 = calendar.date(byAdding: .day, value: 10, to: day1)!
+        let chunk2 = (0 ..< 3).map { offset in
+            TestFixtures.makeAsset(
+                baseName: "IMG_W2_\(offset)",
+                captureDate: calendar.date(byAdding: .minute, value: offset, to: day2)!,
+                coordinate: location,
+            )
+        }
+
+        let groups = await GroupingEngine(
+            namingTimeZone: TestFixtures.shanghaiTimeZone,
+            locationNamingProvider: StubLocationNamingProvider(names: [
+                locationKey(for: location): "故宫",
+            ]),
+            visualSubgroupingProvider: StubVisualSubgroupingProvider()
+        ).makeGroups(from: chunk1 + chunk2)
+
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups[0].assets.count, 6)
+        XCTAssertTrue(groups[0].name.contains("故宫"))
+        XCTAssertTrue(groups[0].name.contains("多次"))
+    }
+
+    func testWideMergeNoGPSWithin30Days() async {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TestFixtures.shanghaiTimeZone
+        let day1 = TestFixtures.makeDate(hour: 11, minute: 0)
+        let chunk1 = (0 ..< 2).map { offset in
+            TestFixtures.makeAsset(
+                baseName: "IMG_N1_\(offset)",
+                captureDate: calendar.date(byAdding: .minute, value: offset, to: day1)!,
+            )
+        }
+        let day2 = calendar.date(byAdding: .day, value: 5, to: day1)!
+        let chunk2 = (0 ..< 2).map { offset in
+            TestFixtures.makeAsset(
+                baseName: "IMG_N2_\(offset)",
+                captureDate: calendar.date(byAdding: .minute, value: offset, to: day2)!,
+            )
+        }
+
+        let groups = await GroupingEngine(
+            namingTimeZone: TestFixtures.shanghaiTimeZone,
+            locationNamingProvider: StubLocationNamingProvider(),
+            visualSubgroupingProvider: StubVisualSubgroupingProvider()
+        ).makeGroups(from: chunk1 + chunk2)
+
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups[0].assets.count, 4)
+        XCTAssertTrue(groups[0].name.contains("多日"))
+    }
+
+    func testWideMergeDoesNotJoinDifferentLocations() async {
+        let locationA = Coordinate(latitude: 31.2304, longitude: 121.4737)
+        let locationB = Coordinate(latitude: 31.2450, longitude: 121.4737)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TestFixtures.shanghaiTimeZone
+        let day1 = TestFixtures.makeDate(hour: 15, minute: 0)
+        let chunkA = (0 ..< 3).map { offset in
+            TestFixtures.makeAsset(
+                baseName: "IMG_D1_\(offset)",
+                captureDate: calendar.date(byAdding: .minute, value: offset, to: day1)!,
+                coordinate: locationA,
+            )
+        }
+        let day2 = calendar.date(byAdding: .day, value: 3, to: day1)!
+        let chunkB = (0 ..< 3).map { offset in
+            TestFixtures.makeAsset(
+                baseName: "IMG_D2_\(offset)",
+                captureDate: calendar.date(byAdding: .minute, value: offset, to: day2)!,
+                coordinate: locationB,
+            )
+        }
+
+        let groups = await GroupingEngine(
+            namingTimeZone: TestFixtures.shanghaiTimeZone,
+            locationNamingProvider: StubLocationNamingProvider(names: [
+                locationKey(for: locationA): "外滩",
+                locationKey(for: locationB): "南京东路",
+            ]),
+            visualSubgroupingProvider: StubVisualSubgroupingProvider()
+        ).makeGroups(from: chunkA + chunkB)
+
+        XCTAssertEqual(groups.count, 2)
     }
 
     func testMakeGroupsAddsOrdinalSuffixWhenBaseNamesCollide() async {
