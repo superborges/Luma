@@ -72,6 +72,7 @@ struct ExportPanelView: View {
                         store.closeExportPanel()
                         dismiss()
                     }
+                    .stitchHoverDimming()
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
@@ -91,6 +92,7 @@ struct ExportPanelView: View {
                         }
                     }
                     .disabled(store.isExporting)
+                    .stitchHoverDimming()
                 }
             }
         }
@@ -103,6 +105,8 @@ struct ExportPanelView: View {
                 Text(title)
                 Spacer()
                 Button("选择…", action: action)
+                    .buttonStyle(.borderless)
+                    .stitchHoverDimming()
             }
             Text(path)
                 .font(.caption)

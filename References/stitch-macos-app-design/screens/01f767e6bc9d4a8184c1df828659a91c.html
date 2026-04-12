@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Luma Obsidian - Start Import Session</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "outline": "#8b90a0",
+                        "error-container": "#93000a",
+                        "surface-container-lowest": "#0e0e0e",
+                        "tertiary-fixed": "#ffdbcc",
+                        "on-tertiary-fixed": "#351000",
+                        "inverse-surface": "#e5e2e1",
+                        "secondary-container": "#26467d",
+                        "background": "#131313",
+                        "primary-fixed-dim": "#adc6ff",
+                        "on-surface": "#e5e2e1",
+                        "outline-variant": "#414755",
+                        "surface-tint": "#adc6ff",
+                        "surface-variant": "#353534",
+                        "surface-container-high": "#2a2a2a",
+                        "on-secondary-fixed-variant": "#26467d",
+                        "tertiary": "#ffb595",
+                        "on-tertiary-fixed-variant": "#7c2e00",
+                        "error": "#ffb4ab",
+                        "inverse-on-surface": "#313030",
+                        "secondary-fixed": "#d8e2ff",
+                        "on-surface-variant": "#c1c6d7",
+                        "on-secondary-container": "#98b5f3",
+                        "on-primary-fixed-variant": "#004493",
+                        "on-background": "#e5e2e1",
+                        "secondary": "#adc6ff",
+                        "on-primary-container": "#00285c",
+                        "on-secondary-fixed": "#001a41",
+                        "inverse-primary": "#005bc1",
+                        "surface-container-low": "#1c1b1b",
+                        "surface-container": "#201f1f",
+                        "on-tertiary": "#571e00",
+                        "on-secondary": "#082f65",
+                        "on-primary-fixed": "#001a41",
+                        "surface-bright": "#393939",
+                        "surface": "#131313",
+                        "primary": "#adc6ff",
+                        "on-primary": "#002e69",
+                        "surface-dim": "#131313",
+                        "primary-fixed": "#d8e2ff",
+                        "surface-container-highest": "#353534",
+                        "on-error-container": "#ffdad6",
+                        "primary-container": "#4b8eff",
+                        "on-error": "#690005",
+                        "tertiary-fixed-dim": "#ffb595",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "tertiary-container": "#ef6719",
+                        "on-tertiary-container": "#4c1a00"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-background text-on-surface select-none antialiased">
+<!-- SideNavBar Shell -->
+<aside class="h-screen w-64 fixed left-0 top-0 bg-[#1c1b1b] flex flex-col py-6 px-4 z-50">
+<div class="mb-10 px-2">
+<h1 class="text-lg font-semibold tracking-tighter text-zinc-100">Luma Obsidian</h1>
+<p class="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">Professional Curator</p>
+</div>
+<nav class="flex-1 space-y-1">
+<!-- Active Tab: Imports -->
+<a class="flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-zinc-200 transition-colors duration-200 hover:bg-[#2a2a2a] rounded-md scale-95 active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="photo_library">photo_library</span>
+<span class="font-sans text-sm tracking-tight">Library</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 bg-[#353534] text-[#adc6ff] rounded-md font-medium scale-95 active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="download">download</span>
+<span class="font-sans text-sm tracking-tight">Imports</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-zinc-200 transition-colors duration-200 hover:bg-[#2a2a2a] rounded-md scale-95 active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="check_circle">check_circle</span>
+<span class="font-sans text-sm tracking-tight">Culling</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-zinc-200 transition-colors duration-200 hover:bg-[#2a2a2a] rounded-md scale-95 active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="tune">tune</span>
+<span class="font-sans text-sm tracking-tight">Editing</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-zinc-200 transition-colors duration-200 hover:bg-[#2a2a2a] rounded-md scale-95 active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="ios_share">ios_share</span>
+<span class="font-sans text-sm tracking-tight">Export</span>
+</a>
+</nav>
+<div class="mt-auto flex items-center gap-3 px-2">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest overflow-hidden border border-outline-variant/20">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="Close-up portrait of a professional photographer in a dark studio setting, soft cinematic lighting, neutral expression" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAkrrUAD44vQSUcpk0KUKaTR7tJt3eI_p0QJWbdEUGIL4qbBbX0_nHbmwim5opjm_qKp3y8GB1QORbwJoB6LTPK7ZP1nygU14CcdRM3AZpbl1Stz1qjJ01wnYV3en6tq5zWhZI16IlnP0SSrVpK5T_5jDbrd0WiYvAadCwodSQ4pCBSqsRTGjJZ914LyawysOapylZ5uzeyj7uJ-e6BazAdJ50S7IKc_D7oj8f4tbi7ghmoOxr-2lmpwc7nGACyQpOLCB1aVSB0wbk"/>
+</div>
+<div class="flex flex-col">
+<span class="text-xs font-medium text-zinc-200">Alex Rivers</span>
+<span class="text-[10px] text-zinc-500 uppercase tracking-tighter">Pro Plan</span>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 min-h-screen flex flex-col">
+<!-- TopNavBar Shell -->
+<header class="fixed top-0 right-0 w-[calc(100%-16rem)] h-14 bg-[#131313]/70 backdrop-blur-xl flex items-center justify-between px-8 z-40">
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2 text-[#adc6ff] border-b border-[#adc6ff]/30 pb-1">
+<span class="font-sans text-xs uppercase tracking-widest cursor-default">All Photos</span>
+</div>
+<div class="flex items-center gap-2 text-zinc-500 hover:text-zinc-200 transition-opacity opacity-80 hover:opacity-100">
+<span class="font-sans text-xs uppercase tracking-widest cursor-pointer">Recent</span>
+</div>
+<div class="flex items-center gap-2 text-zinc-500 hover:text-zinc-200 transition-opacity opacity-80 hover:opacity-100">
+<span class="font-sans text-xs uppercase tracking-widest cursor-pointer">Favorites</span>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-3 text-zinc-500 text-sm" data-icon="search">search</span>
+<input class="bg-surface-container-lowest border-none text-[10px] tracking-widest px-10 py-1.5 w-48 rounded focus:ring-1 focus:ring-primary/30 placeholder-zinc-600 outline-none" placeholder="SEARCH LIBRARY" type="text"/>
+</div>
+<div class="flex items-center gap-4 text-zinc-500">
+<span class="material-symbols-outlined cursor-pointer hover:text-zinc-200" data-icon="help">help</span>
+<span class="material-symbols-outlined cursor-pointer hover:text-zinc-200" data-icon="settings">settings</span>
+</div>
+</div>
+</header>
+<!-- Content Area -->
+<div class="mt-14 p-8 flex-1 bg-surface-container-lowest">
+<!-- Header Section with Breadcrumbs -->
+<div class="mb-12">
+<nav class="flex items-center gap-2 mb-6">
+<span class="text-[10px] uppercase tracking-widest text-outline hover:text-on-surface cursor-pointer">Library</span>
+<span class="material-symbols-outlined text-xs text-outline-variant" data-icon="chevron_right">chevron_right</span>
+<span class="text-[10px] uppercase tracking-widest text-outline hover:text-on-surface cursor-pointer">Expeditions</span>
+<span class="material-symbols-outlined text-xs text-outline-variant" data-icon="chevron_right">chevron_right</span>
+<span class="text-[10px] uppercase tracking-widest text-outline hover:text-on-surface cursor-pointer">Kyoto 2024</span>
+<span class="material-symbols-outlined text-xs text-outline-variant" data-icon="chevron_right">chevron_right</span>
+<span class="text-[10px] uppercase tracking-widest text-primary font-medium">Import</span>
+</nav>
+<div class="flex justify-between items-end">
+<div>
+<h2 class="text-3xl font-bold tracking-tight text-on-surface mb-2">Select Import Source</h2>
+<p class="text-on-surface-variant text-sm max-w-xl">Choose where to ingest your session media from. Luma will automatically detect RAW and Video formats for the Kyoto 2024 expedition.</p>
+</div>
+<button class="px-5 py-2 text-xs font-medium uppercase tracking-widest text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors rounded-lg">
+                        Cancel Session
+                    </button>
+</div>
+</div>
+<!-- Import Source Bento Grid -->
+<div class="grid grid-cols-12 gap-6">
+<!-- SD Card: Primary Source -->
+<div class="col-span-12 md:col-span-8 group cursor-pointer">
+<div class="relative h-[320px] rounded-xl overflow-hidden bg-surface-container-low border border-outline-variant/10 hover:border-primary/40 transition-all duration-300">
+<div class="absolute inset-0 opacity-40 group-hover:opacity-60 transition-opacity">
+<img alt="SD Card" class="w-full h-full object-cover" data-alt="High-end professional photography SD cards scattered on a dark slate surface, moody lighting, shallow depth of field, metallic textures" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBgVFLr6EpgpUjYGZ9SWgQL34sAuFEU0XS_AAt89eGpGCB3xKRw-xqoRFogz0JVb0WPL6rqYdfjfMzEG-1pAsFAuiL2kThMQL5f3SXjOmamx7eQTeJAv3cUak6pt2ovfF37QORMsPI6c1Nxu9zN2x-8GN-5G8jjCDCDBRztu1M9XmocnMrycoNmUxVpoR6ZwxNTx8tfPnXqsqOClCQXQ7c0k91F9Srkgjgs-LJlDkthXOII0NNjznLMCiiT3q1yRdiyaFCnFaRsG-k"/>
+</div>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest via-surface-container-lowest/40 to-transparent"></div>
+<div class="absolute bottom-0 left-0 p-8 w-full">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-2 mb-3">
+<div class="p-2 bg-primary/10 rounded-lg">
+<span class="material-symbols-outlined text-primary" data-icon="sd_card" data-weight="fill">sd_card</span>
+</div>
+<span class="text-[10px] uppercase tracking-[0.2em] text-primary font-bold">Recommended</span>
+</div>
+<h3 class="text-2xl font-bold text-on-surface mb-2">SD Card / Internal Reader</h3>
+<p class="text-on-surface-variant text-sm max-w-md">Ingest directly from your camera's storage. Supports high-speed UHS-II and CFexpress transfer protocols.</p>
+</div>
+<div class="bg-primary/10 text-primary px-3 py-1 rounded text-[10px] font-bold uppercase tracking-widest">Active</div>
+</div>
+</div>
+</div>
+</div>
+<!-- iPhone USB -->
+<div class="col-span-12 md:col-span-4 group cursor-pointer">
+<div class="relative h-[320px] rounded-xl overflow-hidden bg-surface-container-low border border-outline-variant/10 hover:border-primary/40 transition-all duration-300">
+<div class="absolute inset-0 opacity-20 group-hover:opacity-40 transition-opacity">
+<img alt="iPhone USB" class="w-full h-full object-cover" data-alt="Sleek modern smartphone connected with a braided USB-C cable on a dark minimalist desk, soft top-down lighting, tech aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBepO-URCjJUugeZ8-ah7PN3PTsK-VvImVy-YzpQrwlXpSVgZdCy64iNpy_uhtZiZjigLDP8B0MrIVxm8ZOzy1tlscZhKF1ZjftpNwgLHIzZF6MiDFZX91ghhJGyxjYiHn2SLjtMJE8RD6VHBYmIVK3Rdc6Znw911BCW9JFLqQy9nHFwquRvZranLsxj7bXbo2_Uf794RJw1XAV0QhtT4X6WYpQ45k-a4raQQgm9QGoPAnVG7_oOvDJ3GdYSr0Mx_KRkRxedEaYg7I"/>
+</div>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest via-surface-container-lowest/60 to-transparent"></div>
+<div class="absolute bottom-0 left-0 p-8">
+<div class="mb-4">
+<span class="material-symbols-outlined text-outline mb-2" data-icon="usb">usb</span>
+<h3 class="text-xl font-bold text-on-surface mb-1">iPhone (via USB)</h3>
+<p class="text-outline text-xs leading-relaxed">Direct tether or file access for ProRAW and 4K ProRes cinematic files.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Local Folder -->
+<div class="col-span-12 md:col-span-4 group cursor-pointer">
+<div class="p-8 rounded-xl bg-surface-container-low border border-outline-variant/10 hover:border-primary/40 transition-all duration-300 flex flex-col h-full">
+<div class="flex-1">
+<span class="material-symbols-outlined text-outline mb-4 text-3xl" data-icon="folder_open">folder_open</span>
+<h3 class="text-lg font-bold text-on-surface mb-2">Local Folder</h3>
+<p class="text-outline text-xs leading-relaxed mb-6">Select a directory on your machine or an attached external SSD for batch processing.</p>
+</div>
+<div class="pt-4 flex items-center gap-2 text-primary text-[10px] font-bold uppercase tracking-widest">
+<span>Browse File System</span>
+<span class="material-symbols-outlined text-xs" data-icon="arrow_forward">arrow_forward</span>
+</div>
+</div>
+</div>
+<!-- Remote / Cloud (Disabled/Secondary) -->
+<div class="col-span-12 md:col-span-4 group">
+<div class="p-8 rounded-xl bg-surface-container-lowest border border-outline-variant/10 opacity-60 flex flex-col h-full grayscale">
+<div class="flex-1">
+<span class="material-symbols-outlined text-outline mb-4 text-3xl" data-icon="cloud_download">cloud_download</span>
+<h3 class="text-lg font-bold text-zinc-500 mb-2">Cloud Storage</h3>
+<p class="text-zinc-600 text-xs leading-relaxed mb-6">Import from Dropbox, Google Drive, or Frame.io. Requires stable high-speed connection.</p>
+</div>
+<div class="pt-4 flex items-center gap-2 text-zinc-600 text-[10px] font-bold uppercase tracking-widest">
+<span>Coming Soon</span>
+</div>
+</div>
+</div>
+<!-- Manual Selection / Drag Drop -->
+<div class="col-span-12 md:col-span-4">
+<div class="h-full border-2 border-dashed border-outline-variant/20 rounded-xl flex flex-col items-center justify-center p-8 hover:bg-surface-container-low/30 transition-colors cursor-pointer group">
+<span class="material-symbols-outlined text-zinc-600 group-hover:text-primary transition-colors text-4xl mb-4" data-icon="upload_file">upload_file</span>
+<p class="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Or Drag &amp; Drop</p>
+</div>
+</div>
+</div>
+<!-- Action Footer -->
+<div class="mt-12 flex items-center justify-between border-t border-outline-variant/10 pt-8">
+<div class="flex items-center gap-4">
+<div class="flex -space-x-2">
+<div class="w-6 h-6 rounded-full bg-surface-container-highest border border-background flex items-center justify-center overflow-hidden">
+<img alt="Team member" class="w-full h-full object-cover" data-alt="Portrait of a young creative professional woman, minimalist studio background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC45DPJG0dQnJywGHC0Xduk48pjPMmcgGGFVRxnS9w9LZQkfsxQDvgE7twt_DLZBM0xJsMt9A7TSuhiva7EqpcPZa8sQzfIa84ygzc2KkCe7ZdBNTvHaZ2c8qiMRaFVEA2kpSRinumIqHWxzQ9-MYYCUsMh5iQXIs9oeYQKUhX_j4FSIOuuPdeh3U-i2wSFzR7cyVkf1TUhliIpysnZg739X3-1XqJxTZvv_UDrc1uOUwRcBE4I0Raqacq9cog6-DXO1ybuZceXnOY"/>
+</div>
+<div class="w-6 h-6 rounded-full bg-surface-container-highest border border-background flex items-center justify-center">
+<span class="text-[8px] font-bold text-zinc-400">+2</span>
+</div>
+</div>
+<p class="text-[10px] text-zinc-500 uppercase tracking-widest">Session shared with Expedition Team</p>
+</div>
+<div class="flex items-center gap-3">
+<button class="px-6 py-2.5 text-xs font-semibold text-on-surface border border-outline-variant/30 rounded hover:bg-surface-container-high transition-colors">
+                        Go Back
+                    </button>
+<button class="px-8 py-2.5 text-xs font-bold uppercase tracking-widest text-on-primary bg-gradient-to-br from-primary to-primary-container rounded shadow-lg shadow-primary/10 hover:opacity-90 transition-opacity">
+                        Start Session
+                    </button>
+</div>
+</div>
+</div>
+</main>
+</body></html>

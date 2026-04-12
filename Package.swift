@@ -16,7 +16,10 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "Luma"
+            name: "Luma",
+            resources: [
+                .copy("Resources")
+            ]
         ),
         .testTarget(
             name: "LumaTests",

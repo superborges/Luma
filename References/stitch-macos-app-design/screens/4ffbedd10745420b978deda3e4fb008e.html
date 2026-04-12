@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-highest": "#353534",
+                        "secondary-container": "#26467d",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-secondary-container": "#98b5f3",
+                        "on-error-container": "#ffdad6",
+                        "on-secondary": "#082f65",
+                        "inverse-surface": "#e5e2e1",
+                        "on-error": "#690005",
+                        "on-primary-container": "#00285c",
+                        "on-background": "#e5e2e1",
+                        "surface-container-high": "#2a2a2a",
+                        "error-container": "#93000a",
+                        "primary": "#adc6ff",
+                        "on-tertiary": "#571e00",
+                        "tertiary-container": "#ef6719",
+                        "background": "#131313",
+                        "surface-container": "#201f1f",
+                        "surface-tint": "#adc6ff",
+                        "secondary-fixed": "#d8e2ff",
+                        "on-surface": "#e5e2e1",
+                        "on-primary-fixed": "#001a41",
+                        "tertiary": "#ffb595",
+                        "primary-fixed": "#d8e2ff",
+                        "tertiary-fixed": "#ffdbcc",
+                        "on-primary-fixed-variant": "#004493",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "outline-variant": "#414755",
+                        "error": "#ffb4ab",
+                        "surface": "#131313",
+                        "surface-dim": "#131313",
+                        "outline": "#8b90a0",
+                        "on-tertiary-container": "#4c1a00",
+                        "on-tertiary-fixed-variant": "#7c2e00",
+                        "primary-container": "#4b8eff",
+                        "on-secondary-fixed-variant": "#26467d",
+                        "surface-bright": "#393939",
+                        "inverse-primary": "#005bc1",
+                        "tertiary-fixed-dim": "#ffb595",
+                        "on-surface-variant": "#c1c6d7",
+                        "surface-variant": "#353534",
+                        "primary-fixed-dim": "#adc6ff",
+                        "surface-container-low": "#1c1b1b",
+                        "on-primary": "#002e69",
+                        "inverse-on-surface": "#313030",
+                        "on-secondary-fixed": "#001a41",
+                        "secondary": "#adc6ff",
+                        "on-tertiary-fixed": "#351000"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #353534; border-radius: 10px; }
+        .slider-thumb::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #adc6ff;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .immersive-overlay {
+            background: rgba(19, 19, 19, 0.6);
+            backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-black text-on-surface overflow-hidden">
+<div class="relative w-screen h-screen flex flex-col items-center justify-center">
+<div class="absolute inset-0 z-0 flex items-center justify-center p-4">
+<img alt="Arashiyama Bamboo Grove" class="w-full h-full object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDCdHNEwlOFu8Hl9WutUIkNuFobU0VEZDbc4p-ygxzr7q5zX6ASwgpFfSvsY62cPtmTkz6SLLNtP-UJNP8qmoyrVKkpxlL0vnpgTId6haUAjVJk92WA0qWTYWtG2u8_0F8ggmNoWEEpSmHiINpzhrGwhZLouN5tC1bc-JFWaQHTZgKECKRIf-aKJtf0z5a_6fL2CRZQHaGh4hLO1aujYP_3ICrt3i9aqdabTdah1mGqNhkP540bGrZMQtlJP_VbthtoNtVZG98Og1k"/>
+</div>
+<header class="absolute top-0 left-0 w-full h-16 flex justify-between items-center px-8 z-50 bg-gradient-to-b from-black/80 to-transparent">
+<div class="flex items-center gap-6">
+<span class="text-xl font-bold tracking-tighter text-[#adc6ff]">Luma</span>
+<nav class="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
+<span class="hover:text-white cursor-pointer">Library</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+<span class="hover:text-white cursor-pointer">Expeditions</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+<span class="hover:text-white cursor-pointer">Kyoto 2024</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+<span class="text-[#adc6ff] border-b border-[#adc6ff] pb-0.5">Editing</span>
+</nav>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex bg-white/10 rounded-lg p-0.5 backdrop-blur-md">
+<button class="px-4 py-1.5 text-[10px] font-bold rounded bg-surface-container-highest text-primary">BEFORE</button>
+<button class="px-4 py-1.5 text-[10px] font-bold rounded text-outline hover:text-white">AFTER</button>
+</div>
+<div class="flex items-center gap-4">
+<button class="w-10 h-10 rounded-full immersive-overlay flex items-center justify-center text-primary border border-white/10 hover:border-primary/50 transition-all">
+<span class="material-symbols-outlined text-xl">auto_fix</span>
+</button>
+<button class="w-10 h-10 rounded-full immersive-overlay flex items-center justify-center text-neutral-400 border border-white/10 hover:text-white transition-all">
+<span class="material-symbols-outlined text-xl">settings</span>
+</button>
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-white/20">
+<img alt="Alex Rivera" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD4fhaqVXRKlI5zSXoU5EW_c5qlxl-LJFeCKqnX2BCg7HxyymDXx3q60nlnypbnTYqI503VkCFTAvkg9kfatwvc8EsmtoLWCzCjtNJZCKriEh2vIOeMNNQb08VJQpXwh6Z3Iv7Wss0GvPQlCjpjr9cfX5nPCwYfVrM44nhXoN87DQfbsiX03f5RxGonebKoc2MbvM8U_rucsVzsw3QYrKhOQPknsTqbeNTV6QLf_y6VxVCarpYpVXEA257YF_3UKG3WmLxRoZ6-W7I"/>
+</div>
+</div>
+</div>
+</header>
+<div class="absolute left-8 top-1/2 -translate-y-1/2 w-72 z-50 pointer-events-none">
+<div class="pointer-events-auto immersive-overlay rounded-xl border border-white/10 p-5 space-y-4 shadow-2xl">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-lg" style="font-variation-settings: 'FILL' 1;">magic_button</span>
+<h3 class="text-[11px] font-bold uppercase tracking-widest">AI Narrative</h3>
+</div>
+<p class="text-xs leading-relaxed text-on-surface-variant font-medium">
+                    "This image has excellent leading lines. I suggest boosting the shadow detail in the stalks while applying a subtle <span class="text-primary">teal-and-orange</span> split tone to enhance the morning mist."
+                </p>
+<div class="pt-2 border-t border-white/5">
+<div class="flex items-center gap-3 bg-white/5 p-3 rounded-lg hover:bg-white/10 cursor-pointer transition-colors group">
+<div class="w-8 h-10 border border-primary/40 rounded-sm flex items-center justify-center group-hover:border-primary">
+<span class="text-[8px] font-bold text-primary">4:5</span>
+</div>
+<div class="flex flex-col">
+<span class="text-[10px] font-bold text-on-surface">Crop Recommended</span>
+<span class="text-[9px] text-outline">Emphasize bamboo height</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-4xl px-8 z-50 flex flex-col gap-4">
+<div class="immersive-overlay rounded-2xl border border-white/10 p-6 shadow-2xl">
+<div class="flex items-center justify-between mb-6">
+<h3 class="text-[10px] font-bold text-outline uppercase tracking-widest">Auto-Adjustments</h3>
+<div class="flex gap-4">
+<button class="text-[10px] font-bold text-primary flex items-center gap-1 hover:brightness-125">
+<span class="material-symbols-outlined text-sm">restart_alt</span> RESET
+                        </button>
+</div>
+</div>
+<div class="grid grid-cols-5 gap-8">
+<div class="space-y-2">
+<div class="flex justify-between items-center text-[10px]">
+<span class="text-on-surface-variant font-medium">Exposure</span>
+<span class="font-mono text-primary">+0.4</span>
+</div>
+<input class="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider-thumb" type="range" value="65"/>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between items-center text-[10px]">
+<span class="text-on-surface-variant font-medium">Temp</span>
+<span class="font-mono text-primary">-5</span>
+</div>
+<input class="w-full h-1 bg-gradient-to-r from-blue-400 to-yellow-400/50 rounded-lg appearance-none cursor-pointer slider-thumb" type="range" value="40"/>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between items-center text-[10px]">
+<span class="text-on-surface-variant font-medium">Tint</span>
+<span class="font-mono text-primary">+2</span>
+</div>
+<input class="w-full h-1 bg-gradient-to-r from-green-400/50 to-pink-400/50 rounded-lg appearance-none cursor-pointer slider-thumb" type="range" value="52"/>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between items-center text-[10px]">
+<span class="text-on-surface-variant font-medium">Shadows</span>
+<span class="font-mono text-primary">+45</span>
+</div>
+<input class="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider-thumb" type="range" value="80"/>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between items-center text-[10px]">
+<span class="text-on-surface-variant font-medium">Contrast</span>
+<span class="font-mono text-primary">+10</span>
+</div>
+<input class="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider-thumb" type="range" value="60"/>
+</div>
+</div>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-4 px-6 py-3 immersive-overlay rounded-full border border-white/10">
+<div class="flex items-center gap-2 pr-4 border-r border-white/10">
+<span class="material-symbols-outlined text-primary text-lg">grid_on</span>
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Rule of Thirds</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex flex-col">
+<span class="text-[8px] text-outline uppercase tracking-tighter">ISO</span>
+<span class="text-[11px] font-bold">100</span>
+</div>
+<div class="flex flex-col">
+<span class="text-[8px] text-outline uppercase tracking-tighter">Shutter</span>
+<span class="text-[11px] font-bold">1/250</span>
+</div>
+<div class="flex flex-col">
+<span class="text-[8px] text-outline uppercase tracking-tighter">Aperture</span>
+<span class="text-[11px] font-bold">f/4.0</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<button class="px-6 py-3 rounded-full immersive-overlay border border-white/10 text-on-surface-variant font-bold text-[10px] tracking-widest uppercase hover:bg-white/10 transition-all">
+                        Discard
+                    </button>
+<button class="px-10 py-3 rounded-full bg-gradient-to-br from-[#adc6ff] to-[#4b8eff] text-on-primary font-bold text-[10px] tracking-widest uppercase shadow-xl shadow-primary/20 hover:brightness-110 active:scale-95 transition-all">
+                        Apply Refinements
+                    </button>
+</div>
+</div>
+</div>
+<button class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-24 flex items-center justify-center text-white/20 hover:text-white/80 transition-colors z-10">
+<span class="material-symbols-outlined text-4xl">chevron_left</span>
+</button>
+<button class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-24 flex items-center justify-center text-white/20 hover:text-white/80 transition-colors z-10">
+<span class="material-symbols-outlined text-4xl">chevron_right</span>
+</button>
+</div>
+
+</body></html>

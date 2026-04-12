@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-secondary-fixed": "#001a41",
+            "on-primary-container": "#00285c",
+            "on-secondary-container": "#98b5f3",
+            "surface-container-highest": "#353534",
+            "tertiary": "#ffb595",
+            "surface": "#131313",
+            "tertiary-container": "#ef6719",
+            "inverse-primary": "#005bc1",
+            "secondary-fixed": "#d8e2ff",
+            "surface-container-low": "#1c1b1b",
+            "primary-fixed": "#d8e2ff",
+            "tertiary-fixed-dim": "#ffb595",
+            "surface-container": "#201f1f",
+            "on-surface": "#e5e2e1",
+            "error-container": "#93000a",
+            "on-primary-fixed-variant": "#004493",
+            "on-primary-fixed": "#001a41",
+            "on-secondary": "#082f65",
+            "primary-container": "#4b8eff",
+            "tertiary-fixed": "#ffdbcc",
+            "error": "#ffb4ab",
+            "on-background": "#e5e2e1",
+            "background": "#131313",
+            "surface-bright": "#393939",
+            "on-tertiary-container": "#4c1a00",
+            "surface-tint": "#adc6ff",
+            "on-surface-variant": "#c1c6d7",
+            "on-error-container": "#ffdad6",
+            "outline": "#8b90a0",
+            "surface-container-high": "#2a2a2a",
+            "primary-fixed-dim": "#adc6ff",
+            "outline-variant": "#414755",
+            "on-tertiary-fixed": "#351000",
+            "secondary": "#adc6ff",
+            "on-tertiary": "#571e00",
+            "primary": "#adc6ff",
+            "inverse-on-surface": "#313030",
+            "secondary-container": "#26467d",
+            "on-primary": "#002e69",
+            "secondary-fixed-dim": "#adc6ff",
+            "inverse-surface": "#e5e2e1",
+            "surface-variant": "#353534",
+            "on-tertiary-fixed-variant": "#7c2e00",
+            "surface-container-lowest": "#0e0e0e",
+            "surface-dim": "#131313",
+            "on-secondary-fixed-variant": "#26467d",
+            "on-error": "#690005"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.125rem",
+            "lg": "0.25rem",
+            "xl": "0.5rem",
+            "full": "0.75rem"
+          },
+          "fontFamily": {
+            "headline": ["Inter"],
+            "body": ["Inter"],
+            "label": ["Inter"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    body { font-family: 'Inter', sans-serif; background-color: #131313; color: #e5e2e1; }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+    .glass-overlay { background: rgba(53, 53, 52, 0.7); backdrop-filter: blur(30px); }
+    .primary-gradient { background: linear-gradient(145deg, #adc6ff 0%, #4b8eff 100%); }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+  </style>
+</head>
+<body class="overflow-hidden">
+<!-- SideNavBar Anchor -->
+<aside class="bg-neutral-900 h-screen w-64 fixed left-0 top-0 flex flex-col h-full py-6 px-4 z-50">
+<div class="mb-10 px-2">
+<div class="text-xl font-bold tracking-tighter text-neutral-100 flex items-center gap-2">
+<span class="material-symbols-outlined text-blue-400" style="font-variation-settings: 'FILL' 1;">camera</span>
+        Luma
+      </div>
+<div class="font-sans tracking-tight text-sm text-neutral-500 mt-1 uppercase tracking-widest text-[10px]">Digital Darkroom</div>
+</div>
+<nav class="flex-1 space-y-1">
+<div class="text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 transition-colors flex items-center gap-3 px-3 py-2.5 rounded-md cursor-pointer font-sans tracking-tight text-sm">
+<span class="material-symbols-outlined">photo_library</span>
+        Library
+      </div>
+<div class="text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 transition-colors flex items-center gap-3 px-3 py-2.5 rounded-md cursor-pointer font-sans tracking-tight text-sm">
+<span class="material-symbols-outlined">download</span>
+        Imports
+      </div>
+<!-- Active State: Culling -->
+<div class="text-blue-400 font-semibold bg-neutral-800/80 rounded-md flex items-center gap-3 px-3 py-2.5 cursor-pointer font-sans tracking-tight text-sm">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+        Culling
+      </div>
+<div class="text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 transition-colors flex items-center gap-3 px-3 py-2.5 rounded-md cursor-pointer font-sans tracking-tight text-sm">
+<span class="material-symbols-outlined">tune</span>
+        Editing
+      </div>
+<div class="text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 transition-colors flex items-center gap-3 px-3 py-2.5 rounded-md cursor-pointer font-sans tracking-tight text-sm">
+<span class="material-symbols-outlined">ios_share</span>
+        Export
+      </div>
+</nav>
+<div class="mt-auto pt-6 px-3 border-t border-neutral-800/50">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center overflow-hidden">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="professional portrait of a male photographer in low lighting, moody studio setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC0UA3dEvWR5N8-XzexhxUn7nEOzA2vgV7fQqXrnbU_PYc_oEVbnyAIDhu1NfZe25D7K0VYbGnpUh_gkCMyZCPE1-qwnpfTL7_X6WVmHGvdOoXIz7FWcv-dEgJ8buc0rYIomXRXti7znGOJiR5OO36MYYgZNqe4crbw6PVH-WHIG4blu1JmDd3vW4JfDHubGQLvePkKTmx8jA7py-MSsUEPY4gDXOrTeEYEFPfTbmqLs9xZKNIXHE6tffgWFnwiwEXGQ0MyS6dfawg"/>
+</div>
+<div class="flex flex-col">
+<span class="text-xs font-semibold text-neutral-100">Julian Voss</span>
+<span class="text-[10px] text-neutral-500">Pro Plan</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Wrapper -->
+<main class="ml-64 min-h-screen flex flex-col bg-surface-container-lowest">
+<!-- TopNavBar Anchor (Breadcrumbs + Actions) -->
+<header class="h-14 bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-800/20 flex justify-between items-center px-8 sticky top-0 z-40">
+<div class="flex items-center gap-2 font-sans text-[10px] uppercase tracking-widest text-neutral-500">
+<span class="hover:text-neutral-200 transition-colors cursor-pointer">Library</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+<span class="hover:text-neutral-200 transition-colors cursor-pointer">Expeditions</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+<span class="hover:text-neutral-200 transition-colors cursor-pointer">Kyoto 2024</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+<span class="hover:text-neutral-200 transition-colors cursor-pointer">Culling</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+<span class="hover:text-neutral-200 transition-colors cursor-pointer">Arashiyama Bamboo</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+<span class="text-blue-400 font-bold">Similar Assets</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-4 text-neutral-500">
+<span class="material-symbols-outlined hover:text-neutral-200 cursor-pointer text-sm">settings</span>
+<span class="material-symbols-outlined hover:text-neutral-200 cursor-pointer text-sm">help</span>
+</div>
+<button class="primary-gradient text-on-primary px-4 py-1.5 rounded-md text-[11px] font-bold tracking-widest uppercase flex items-center gap-2 active:scale-95 duration-100">
+<span class="material-symbols-outlined text-sm">auto_awesome</span>
+          Keep Best
+        </button>
+</div>
+</header>
+<!-- Side-by-Side Comparison Canvas -->
+<section class="flex-1 p-6 flex flex-col gap-6 overflow-hidden">
+<!-- Comparison Header Info -->
+<div class="flex justify-between items-end">
+<div>
+<h1 class="text-2xl font-bold tracking-tight text-on-surface">Sequence Comparison</h1>
+<p class="text-sm text-on-surface-variant">3 Visually similar assets detected (Burst Sequence)</p>
+</div>
+<div class="flex items-center gap-3">
+<div class="bg-surface-container-high px-3 py-1.5 rounded-md text-[10px] font-medium text-on-surface-variant flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+             Group Density: 88% Match
+          </div>
+</div>
+</div>
+<!-- Assets Grid -->
+<div class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
+<!-- Asset 1 (AI TOP PICK) -->
+<div class="flex flex-col gap-3 group">
+<div class="relative flex-1 rounded-sm overflow-hidden bg-surface-container-low group-hover:ring-1 ring-primary/30 transition-all duration-300">
+<img alt="Kyoto Bamboo Forest" class="w-full h-full object-cover" data-alt="vertical composition of towering bamboo stalks in Kyoto forest, soft green filtered light, high detail and sharpness" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCo1rPTGr5x5GIvMSX2ZU87OVYrSCh_GUhDjYRNAc9vbdOI3X_OOEoFmFGc1hh2uFWUHGHhcwa0aNrqqaxitfklk1eyVMTSjI0hkV6FGclrPV0On0w6mApJTDPLk0eMZL-E0d8XWg8CcK48vfbhUJvmYWKjRB0-eZ6HDg6s_W9wPt5900ExHRppYADVAXiqfz9L99YdcpKksHWLzUZKPw4534Ms_9UzCmKC_ShedOB4Ni9EGEUVKoEYrCQGDAFNq74kWvyknbyxoZg"/>
+<!-- AI Top Pick Badge -->
+<div class="absolute top-4 left-4 primary-gradient text-on-primary px-2.5 py-1 rounded-sm text-[9px] font-black tracking-widest flex items-center gap-1.5 z-10">
+<span class="material-symbols-outlined text-[12px]" style="font-variation-settings: 'FILL' 1;">star</span>
+              AI TOP PICK
+            </div>
+<!-- EXIF Overlay -->
+<div class="absolute bottom-4 left-4 right-4 glass-overlay px-3 py-2 rounded flex justify-between items-center text-[10px] font-mono text-on-surface opacity-0 group-hover:opacity-100 transition-opacity">
+<span>1/250s · f/2.8 · ISO 100</span>
+<span class="text-outline">35mm GM</span>
+</div>
+<!-- Pick/Reject Floating Icons -->
+<div class="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="w-8 h-8 rounded-full bg-surface-container-highest/80 backdrop-blur text-primary flex items-center justify-center hover:bg-primary hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">check</span>
+</button>
+<button class="w-8 h-8 rounded-full bg-surface-container-highest/80 backdrop-blur text-tertiary flex items-center justify-center hover:bg-tertiary hover:text-on-tertiary transition-colors">
+<span class="material-symbols-outlined text-sm">close</span>
+</button>
+</div>
+</div>
+<!-- Analysis Details -->
+<div class="bg-surface-container-low p-4 rounded-lg flex flex-col gap-4">
+<div class="flex justify-between items-center">
+<span class="text-[10px] text-outline font-bold tracking-widest uppercase">Mastery Score</span>
+<span class="text-xl font-black text-primary">9.4</span>
+</div>
+<div class="space-y-2">
+<div class="flex flex-col gap-1">
+<div class="flex justify-between text-[10px] text-on-surface-variant">
+<span>Composition</span>
+<span>9.1</span>
+</div>
+<div class="h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full primary-gradient" style="width: 91%"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex justify-between text-[10px] text-on-surface-variant">
+<span>Exposure</span>
+<span>9.6</span>
+</div>
+<div class="h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full primary-gradient" style="width: 96%"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex justify-between text-[10px] text-on-surface-variant">
+<span>Sharpness</span>
+<span>9.8</span>
+</div>
+<div class="h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full primary-gradient" style="width: 98%"></div>
+</div>
+</div>
+</div>
+<button class="mt-2 w-full py-2 bg-secondary-container/30 hover:bg-secondary-container/50 text-secondary text-[11px] font-bold rounded transition-colors uppercase tracking-widest">
+              Pick Image (P)
+            </button>
+</div>
+</div>
+<!-- Asset 2 -->
+<div class="flex flex-col gap-3 group">
+<div class="relative flex-1 rounded-sm overflow-hidden bg-surface-container-low group-hover:ring-1 ring-primary/30 transition-all duration-300">
+<img alt="Kyoto Bamboo Forest Detail" class="w-full h-full object-cover" data-alt="slightly motion blurred bamboo forest path in Kyoto, lower angle, overcast mood, rich green tones" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDHkZpei1x5TUNlKdqvDiM378hh0K2yN_tvZB8u823C9Km72N52w15yxOP-FRxQl7XZvMOqGllZeNBC10XaQumVZGNyz6Zw00zTcFNS_e75zD5DYk7ozciecsl5CSH7N_0I0VVpnwB0Uw5PPSTn9De1Di0fy7rOuZBwgGemgxE1LGWP3gFTsGL9R1s3m6JnqtItYsD7-n_MtkDH_x_0jsOQSqnQmKQMNbizknihfzRK7xb11s-_HCDxp2FKFeJlJBbCsfZpLwIgjD0"/>
+<!-- EXIF Overlay -->
+<div class="absolute bottom-4 left-4 right-4 glass-overlay px-3 py-2 rounded flex justify-between items-center text-[10px] font-mono text-on-surface opacity-0 group-hover:opacity-100 transition-opacity">
+<span>1/200s · f/2.8 · ISO 100</span>
+<span class="text-outline">35mm GM</span>
+</div>
+<!-- Pick/Reject Floating Icons -->
+<div class="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="w-8 h-8 rounded-full bg-surface-container-highest/80 backdrop-blur text-primary flex items-center justify-center hover:bg-primary hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined text-sm">check</span>
+</button>
+<button class="w-8 h-8 rounded-full bg-surface-container-highest/80 backdrop-blur text-tertiary flex items-center justify-center hover:bg-tertiary hover:text-on-tertiary transition-colors">
+<span class="material-symbols-outlined text-sm">close</span>
+</button>
+</div>
+</div>
+<!-- Analysis Details -->
+<div class="bg-surface-container-low p-4 rounded-lg flex flex-col gap-4">
+<div class="flex justify-between items-center">
+<span class="text-[10px] text-outline font-bold tracking-widest uppercase">Mastery Score</span>
+<span class="text-xl font-black text-on-surface">7.2</span>
+</div>
+<div class="space-y-2">
+<div class="flex flex-col gap-1">
+<div class="flex justify-between text-[10px] text-on-surface-variant">
+<span>Composition</span>
+<span>7.8</span>
+</div>
+<div class="h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-outline" style="width: 78%"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex justify-between text-[10px] text-on-surface-variant">
+<span>Exposure</span>
+<span>8.1</span>
+</div>
+<div class="h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-outline" style="width: 81%"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex justify-between text-[10px] text-on-surface-variant">
+<span>Sharpness</span>
+<span>5.4</span>
+</div>
+<div class="h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-tertiary-container" style="width: 54%"></div>
+</div>
+</div>
+</div>
+<button class="mt-2 w-full py-2 bg-surface-container-highest/50 hover:bg-surface-container-highest text-on-surface-variant text-[11px] font-bold rounded transition-colors uppercase tracking-widest">
+              Reject Image (X)
+            </button>
+</div>
+</div>
+<!-- Asset 3 -->
+<div class="flex flex-col gap-3 group">
+<div class="relative flex-1 rounded-sm overflow-hidden bg-surface-container-low group-hover:ring-1 ring-primary/30 transition-all duration-300">
+<img alt="Kyoto Bamboo Forest Vertical" class="w-full h-full object-cover" data-alt="clean vertical bamboo grove shot, vibrant green canopy, bright diffused lighting, minimal distractions" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCMLh7KvSacNyA7Geh3-1GR3HmXV5w_81ihe2LmLEzkSgNZJEb3f6_Vcmo93Yz4SkA_6KEl3S4YWIaoofUTBuwFh2LrPL_AWmyryfNmW4Dj-3BopyBJmc5S4JFpEprxAIWKTemlxoRMBQ0JLOfDVfROlJbOFXiqjCpVsbQzQL5g5nAGOCdHdbExzgoicySUTdnNmhOCJL1GxB3xPT4RWpQpCxMFZpNFyhyu8Esf-qIrTJbyqj4qDQfoYjgD7VS3qVnoW38XZYFL--8"/>
+<!-- EXIF Overlay -->
+<div class="absolute bottom-4 left-4 right-4 glass-overlay px-3 py-2 rounded flex justify-between items-center text-[10px] font-mono text-on-surface opacity-0 group-hover:opacity-100 transition-opacity">
+<span>1/250s · f/2.8 · ISO 100</span>
+<span class="text-outline">35mm GM</span>
+</div>
+<!-- Pick/Reject Floating Icons -->
+<div class="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="w-8 h-8 rounded-full bg-surface-container-highest/80 backdrop-blur text-primary flex items-center justify-center hover:bg-primary hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined text-sm">check</span>
+</button>
+<button class="w-8 h-8 rounded-full bg-surface-container-highest/80 backdrop-blur text-tertiary flex items-center justify-center hover:bg-tertiary hover:text-on-tertiary transition-colors">
+<span class="material-symbols-outlined text-sm">close</span>
+</button>
+</div>
+</div>
+<!-- Analysis Details -->
+<div class="bg-surface-container-low p-4 rounded-lg flex flex-col gap-4">
+<div class="flex justify-between items-center">
+<span class="text-[10px] text-outline font-bold tracking-widest uppercase">Mastery Score</span>
+<span class="text-xl font-black text-on-surface">8.8</span>
+</div>
+<div class="space-y-2">
+<div class="flex flex-col gap-1">
+<div class="flex justify-between text-[10px] text-on-surface-variant">
+<span>Composition</span>
+<span>8.5</span>
+</div>
+<div class="h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-outline" style="width: 85%"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex justify-between text-[10px] text-on-surface-variant">
+<span>Exposure</span>
+<span>9.2</span>
+</div>
+<div class="h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-outline" style="width: 92%"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex justify-between text-[10px] text-on-surface-variant">
+<span>Sharpness</span>
+<span>8.9</span>
+</div>
+<div class="h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-outline" style="width: 89%"></div>
+</div>
+</div>
+</div>
+<button class="mt-2 w-full py-2 bg-surface-container-highest/50 hover:bg-surface-container-highest text-on-surface-variant text-[11px] font-bold rounded transition-colors uppercase tracking-widest">
+              Pick Image (P)
+            </button>
+</div>
+</div>
+</div>
+</section>
+<!-- Contextual Footer -->
+<footer class="h-20 bg-surface-container-low/50 border-t border-outline-variant/10 px-8 flex items-center justify-between">
+<div class="flex items-center gap-8">
+<div class="flex flex-col">
+<span class="text-[10px] text-outline font-bold uppercase tracking-widest">Keyboard Shortcuts</span>
+<div class="flex gap-4 mt-1">
+<span class="text-[10px] text-on-surface-variant"><b class="text-primary mr-1">P</b> Pick</span>
+<span class="text-[10px] text-on-surface-variant"><b class="text-tertiary mr-1">X</b> Reject</span>
+<span class="text-[10px] text-on-surface-variant"><b class="text-on-surface mr-1">← →</b> Navigate</span>
+<span class="text-[10px] text-on-surface-variant"><b class="text-on-surface mr-1">Enter</b> Compare Set</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="px-6 py-2 rounded-md text-[11px] font-bold tracking-widest text-outline hover:text-on-surface transition-colors uppercase">
+          Skip Group
+        </button>
+<button class="primary-gradient px-8 py-2.5 rounded-md text-[12px] font-bold tracking-widest text-on-primary shadow-xl shadow-primary-container/20 uppercase transition-transform active:scale-95">
+          Confirm &amp; Next
+        </button>
+</div>
+</footer>
+</main>
+</body></html>

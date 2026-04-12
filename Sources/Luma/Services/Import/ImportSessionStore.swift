@@ -1,19 +1,19 @@
 import Foundation
 
 enum ImportSessionStore {
-    static func save(_ session: ImportSessionRecord) throws {
+    static func save(_ session: ImportSession) throws {
         let data = try JSONEncoder.lumaEncoder.encode(session)
         try data.write(to: try AppDirectories.importSessionURL(id: session.id), options: [.atomic])
     }
 
-    static func delete(_ session: ImportSessionRecord) throws {
+    static func delete(_ session: ImportSession) throws {
         let url = try AppDirectories.importSessionURL(id: session.id)
         if FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
         }
     }
 
-    static func loadRecoverableSessions() throws -> [ImportSessionRecord] {
+    static func loadRecoverableSessions() throws -> [ImportSession] {
         let root = try AppDirectories.importSessionsRoot()
         let urls = try FileManager.default.contentsOfDirectory(
             at: root,
@@ -21,11 +21,11 @@ enum ImportSessionStore {
             options: [.skipsHiddenFiles]
         )
 
-        var sessions: [ImportSessionRecord] = []
+        var sessions: [ImportSession] = []
 
         for url in urls {
             let data = try Data(contentsOf: url)
-            var session = try JSONDecoder.lumaDecoder.decode(ImportSessionRecord.self, from: data)
+            var session = try JSONDecoder.lumaDecoder.decode(ImportSession.self, from: data)
             guard session.status != .completed else { continue }
 
             if session.status == .running {
@@ -46,7 +46,7 @@ enum ImportSessionStore {
 
     static func deleteSessions(forProjectDirectory projectDirectory: URL) throws {
         let sessions = try loadRecoverableSessions()
-        for session in sessions where sameLocation(session.projectDirectory, projectDirectory) {
+        for session in sessions where session.projectDirectory.map({ sameLocation($0, projectDirectory) }) ?? false {
             try delete(session)
         }
     }

@@ -23,8 +23,7 @@ final class ProjectStoreTests: XCTestCase {
         let groupA = TestFixtures.makeGroup(name: "Group A", assets: [asset1, asset2])
         let groupB = TestFixtures.makeGroup(name: "Group B", assets: [asset3])
 
-        store.assets = [asset1, asset2, asset3]
-        store.groups = [groupA, groupB]
+        TestFixtures.seedStore(store, assets: [asset1, asset2, asset3], groups: [groupA, groupB])
         store.selectedAssetID = asset3.id
 
         store.selectGroup(groupA.id)
@@ -64,8 +63,7 @@ final class ProjectStoreTests: XCTestCase {
         let groupA = TestFixtures.makeGroup(name: "Group A", assets: [recommendedA, normalA], recommendedAssets: [recommendedA.id])
         let groupB = TestFixtures.makeGroup(name: "Group B", assets: [recommendedB], recommendedAssets: [recommendedB.id])
 
-        store.assets = [recommendedA, normalA, recommendedB]
-        store.groups = [groupA, groupB]
+        TestFixtures.seedStore(store, assets: [recommendedA, normalA, recommendedB], groups: [groupA, groupB])
         store.selectGroup(groupA.id)
 
         store.selectRecommendedInCurrentScope()
@@ -107,7 +105,7 @@ final class ProjectStoreTests: XCTestCase {
             assets: [pending, technicalReject, pickedDespiteIssue, explicitlyRejected],
             recommendedAssets: [pickedDespiteIssue.id]
         )
-        store.assets = [pending, technicalReject, pickedDespiteIssue, explicitlyRejected]
+        TestFixtures.seedStore(store, assets: [pending, technicalReject, pickedDespiteIssue, explicitlyRejected])
 
         let summary = store.summary(for: group)
 

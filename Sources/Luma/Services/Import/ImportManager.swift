@@ -29,12 +29,12 @@ private actor ImportConnectionTracker {
 }
 
 struct ImportedProject {
-    let manifest: ProjectManifest
+    let manifest: ExpeditionManifest
     let directory: URL
 }
 
 struct ImportedProjectSnapshot {
-    let manifest: ProjectManifest
+    let manifest: ExpeditionManifest
     let directory: URL
     let isFinal: Bool
 }
@@ -47,12 +47,15 @@ struct ImportManager: Sendable {
         self.groupingEngine = groupingEngine
     }
 
-    func mostRecentRecoverableSession() -> ImportSessionRecord? {
+    func mostRecentRecoverableSession() -> ImportSession? {
         try? ImportSessionStore.loadRecoverableSessions().first
     }
 
-    func loadManifest(for session: ImportSessionRecord) throws -> ProjectManifest {
-        try Self.loadManifest(from: session.projectDirectory)
+    func loadManifest(for session: ImportSession) throws -> ExpeditionManifest {
+        guard let projectDirectory = session.projectDirectory else {
+            throw LumaError.importFailed("导入会话缺少项目目录。")
+        }
+        return try Self.loadManifest(from: projectDirectory)
     }
 
     func refreshGroupNames(for groups: [PhotoGroup]) async -> [PhotoGroup] {
@@ -168,7 +171,7 @@ struct ImportManager: Sendable {
             createdAt: createdAt
         )
 
-        var session = ImportSessionRecord(
+        var session = ImportSession(
             id: UUID(),
             source: source,
             projectDirectory: projectDirectory,
@@ -181,7 +184,9 @@ struct ImportManager: Sendable {
             completedThumbnails: 0,
             completedPreviews: 0,
             completedOriginals: 0,
-            lastError: nil
+            lastError: nil,
+            completedAt: nil,
+            importedAssetIDs: []
         )
 
         try ImportSessionStore.save(session)
@@ -204,7 +209,7 @@ struct ImportManager: Sendable {
     }
 
     func resumeImport(
-        session: ImportSessionRecord,
+        session: ImportSession,
         progress: @escaping @Sendable (ImportProgress) -> Void,
         snapshot: @escaping @Sendable (ImportedProjectSnapshot) -> Void
     ) async throws -> ImportedProject {
@@ -217,7 +222,7 @@ struct ImportManager: Sendable {
     }
 
     func resumeImport(
-        session: ImportSessionRecord,
+        session: ImportSession,
         adapter: any ImportSourceAdapter,
         progress: @escaping @Sendable (ImportProgress) -> Void,
         snapshot: @escaping @Sendable (ImportedProjectSnapshot) -> Void
@@ -229,7 +234,10 @@ struct ImportManager: Sendable {
         session.updatedAt = .now
         try ImportSessionStore.save(session)
 
-        let manifest = try Self.loadManifest(from: session.projectDirectory)
+        guard let projectDirectory = session.projectDirectory else {
+            throw LumaError.importFailed("导入会话缺少项目目录。")
+        }
+        let manifest = try Self.loadManifest(from: projectDirectory)
 
         return try await runImport(
             adapter: adapter,
@@ -242,11 +250,14 @@ struct ImportManager: Sendable {
 
     private func runImport(
         adapter: any ImportSourceAdapter,
-        session: inout ImportSessionRecord,
-        existingManifest: ProjectManifest?,
+        session: inout ImportSession,
+        existingManifest: ExpeditionManifest?,
         progress: @escaping @Sendable (ImportProgress) -> Void,
         snapshot: @escaping @Sendable (ImportedProjectSnapshot) -> Void
     ) async throws -> ImportedProject {
+        guard let projectDirectory = session.projectDirectory else {
+            throw LumaError.importFailed("导入会话缺少项目目录。")
+        }
         let importStartedAt = ProcessInfo.processInfo.systemUptime
         Self.traceEvent(
             "import_run_started",
@@ -287,7 +298,7 @@ struct ImportManager: Sendable {
         }
 
         let itemsByResumeKey = Dictionary(uniqueKeysWithValues: discoveredItems.map { ($0.resumeKey, $0) })
-        var manifest: ProjectManifest
+        var manifest: ExpeditionManifest
 
         if let existingManifest {
             manifest = existingManifest
@@ -297,7 +308,7 @@ struct ImportManager: Sendable {
             session.completedOriginals = manifest.assets.filter { Self.originalPhaseFinished(for: $0) }.count
             session.updatedAt = .now
             try ImportSessionStore.save(session)
-            snapshot(.init(manifest: manifest, directory: session.projectDirectory, isFinal: false))
+            snapshot(.init(manifest: manifest, directory: projectDirectory, isFinal: false))
         } else {
             let manifestBuildStartedAt = ProcessInfo.processInfo.systemUptime
             session.phase = .preparingThumbnails
@@ -313,7 +324,7 @@ struct ImportManager: Sendable {
                 connectionTracker: connectionTracker
             )
 
-            try Self.saveManifest(manifest, in: session.projectDirectory)
+            try Self.saveManifest(manifest, in: projectDirectory)
             Self.traceMetric(
                 "initial_manifest_built",
                 startedAt: manifestBuildStartedAt,
@@ -326,7 +337,7 @@ struct ImportManager: Sendable {
                     ]
                 )
             )
-            snapshot(.init(manifest: manifest, directory: session.projectDirectory, isFinal: false))
+            snapshot(.init(manifest: manifest, directory: projectDirectory, isFinal: false))
         }
 
         session.phase = .copyingPreviews
@@ -339,6 +350,7 @@ struct ImportManager: Sendable {
             itemsByResumeKey: itemsByResumeKey,
             adapter: adapter,
             session: &session,
+            projectRoot: projectDirectory,
             progress: progress,
             connectionTracker: connectionTracker
         )
@@ -353,8 +365,8 @@ struct ImportManager: Sendable {
                 ]
             )
         )
-        try Self.saveManifest(manifest, in: session.projectDirectory)
-        snapshot(.init(manifest: manifest, directory: session.projectDirectory, isFinal: false))
+        try Self.saveManifest(manifest, in: projectDirectory)
+        snapshot(.init(manifest: manifest, directory: projectDirectory, isFinal: false))
 
         session.phase = .copyingOriginals
         session.updatedAt = .now
@@ -366,6 +378,7 @@ struct ImportManager: Sendable {
             itemsByResumeKey: itemsByResumeKey,
             adapter: adapter,
             session: &session,
+            projectRoot: projectDirectory,
             progress: progress,
             connectionTracker: connectionTracker
         )
@@ -399,12 +412,23 @@ struct ImportManager: Sendable {
                 ]
             )
         )
-        try Self.saveManifest(manifest, in: session.projectDirectory)
-        snapshot(.init(manifest: manifest, directory: session.projectDirectory, isFinal: true))
+        var expedition = manifest.expedition
+        var historySession = session
+        historySession.status = .completed
+        historySession.completedAt = .now
+        historySession.importedAssetIDs = manifest.assets.map(\.id)
+        historySession.projectDirectory = nil
+        historySession.projectName = nil
+        expedition.importSessions.append(historySession)
+        expedition.updatedAt = .now
+        manifest.expedition = expedition
+
+        try Self.saveManifest(manifest, in: projectDirectory)
+        snapshot(.init(manifest: manifest, directory: projectDirectory, isFinal: true))
 
         session.status = .completed
         session.updatedAt = .now
-        let importedDirectory = session.projectDirectory
+        let importedDirectory = projectDirectory
         try ImportSessionStore.delete(session)
         Self.logger.log("Imported \(manifest.assets.count) assets into \(importedDirectory.path, privacy: .public)")
         Self.traceMetric(
@@ -424,19 +448,22 @@ struct ImportManager: Sendable {
     }
 
     private func buildInitialManifest(
-        session: inout ImportSessionRecord,
+        session: inout ImportSession,
         items: [DiscoveredItem],
         adapter: any ImportSourceAdapter,
         progress: @escaping @Sendable (ImportProgress) -> Void,
         connectionTracker: ImportConnectionTracker
-    ) async throws -> ProjectManifest {
+    ) async throws -> ExpeditionManifest {
+        guard let projectDir = session.projectDirectory else {
+            throw LumaError.importFailed("导入会话缺少项目目录。")
+        }
         var assets: [MediaAsset] = []
         assets.reserveCapacity(items.count)
 
         for (index, item) in items.enumerated() {
             try await connectionTracker.ensureConnected()
             let assetID = UUID()
-            let thumbnailURL = session.projectDirectory
+            let thumbnailURL = projectDir
                 .appendingPathComponent("thumbnails", isDirectory: true)
                 .appendingPathComponent("\(assetID.uuidString).png")
 
@@ -449,21 +476,21 @@ struct ImportManager: Sendable {
                 for: item.previewFile,
                 assetID: assetID,
                 baseName: item.baseName,
-                projectDirectory: session.projectDirectory,
+                projectDirectory: projectDir,
                 subdirectory: "preview"
             )
             let rawURL = Self.destinationURL(
                 for: item.rawFile,
                 assetID: assetID,
                 baseName: item.baseName,
-                projectDirectory: session.projectDirectory,
+                projectDirectory: projectDir,
                 subdirectory: "raw"
             )
             let auxiliaryURL = Self.destinationURL(
                 for: item.auxiliaryFile,
                 assetID: assetID,
                 baseName: item.baseName,
-                projectDirectory: session.projectDirectory,
+                projectDirectory: projectDir,
                 subdirectory: "auxiliary"
             )
 
@@ -504,9 +531,10 @@ struct ImportManager: Sendable {
             )
         }
 
-        return ProjectManifest(
-            id: UUID(),
-            name: session.projectName,
+        let manifestID = UUID()
+        return ExpeditionManifest(
+            id: manifestID,
+            name: session.displayProjectName,
             createdAt: session.createdAt,
             assets: assets,
             groups: []
@@ -514,10 +542,11 @@ struct ImportManager: Sendable {
     }
 
     private func copyPreviewAssets(
-        in manifest: inout ProjectManifest,
+        in manifest: inout ExpeditionManifest,
         itemsByResumeKey: [String: DiscoveredItem],
         adapter: any ImportSourceAdapter,
-        session: inout ImportSessionRecord,
+        session: inout ImportSession,
+        projectRoot: URL,
         progress: @escaping @Sendable (ImportProgress) -> Void,
         connectionTracker: ImportConnectionTracker
     ) async throws {
@@ -544,7 +573,7 @@ struct ImportManager: Sendable {
                 }
 
                 manifest.assets[index].importState = Self.originalPhaseFinished(for: manifest.assets[index]) ? .complete : .previewCopied
-                try Self.saveManifest(manifest, in: session.projectDirectory)
+                try Self.saveManifest(manifest, in: projectRoot)
             }
 
             session.completedPreviews = index + 1
@@ -562,10 +591,11 @@ struct ImportManager: Sendable {
     }
 
     private func copyOriginalAssets(
-        in manifest: inout ProjectManifest,
+        in manifest: inout ExpeditionManifest,
         itemsByResumeKey: [String: DiscoveredItem],
         adapter: any ImportSourceAdapter,
-        session: inout ImportSessionRecord,
+        session: inout ImportSession,
+        projectRoot: URL,
         progress: @escaping @Sendable (ImportProgress) -> Void,
         connectionTracker: ImportConnectionTracker
     ) async throws {
@@ -596,7 +626,7 @@ struct ImportManager: Sendable {
                 }
 
                 manifest.assets[index].importState = Self.originalPhaseFinished(for: manifest.assets[index]) ? .complete : .rawCopied
-                try Self.saveManifest(manifest, in: session.projectDirectory)
+                try Self.saveManifest(manifest, in: projectRoot)
             }
 
             session.completedOriginals = index + 1
@@ -613,7 +643,7 @@ struct ImportManager: Sendable {
         }
     }
 
-    private func pause(session: inout ImportSessionRecord, error: Error) {
+    private func pause(session: inout ImportSession, error: Error) {
         session.status = .paused
         session.phase = .paused
         session.lastError = error.localizedDescription
@@ -700,14 +730,14 @@ struct ImportManager: Sendable {
         }
     }
 
-    private static func saveManifest(_ manifest: ProjectManifest, in directory: URL) throws {
+    private static func saveManifest(_ manifest: ExpeditionManifest, in directory: URL) throws {
         let manifestData = try JSONEncoder.lumaEncoder.encode(manifest)
         try manifestData.write(to: AppDirectories.manifestURL(in: directory), options: [.atomic])
     }
 
-    private static func loadManifest(from directory: URL) throws -> ProjectManifest {
+    private static func loadManifest(from directory: URL) throws -> ExpeditionManifest {
         let data = try Data(contentsOf: AppDirectories.manifestURL(in: directory))
-        return try JSONDecoder.lumaDecoder.decode(ProjectManifest.self, from: data)
+        return try JSONDecoder.lumaDecoder.decode(ExpeditionManifest.self, from: data)
     }
 
     private static func traceEvent(_ name: String, metadata: [String: String]) {
@@ -724,18 +754,18 @@ struct ImportManager: Sendable {
         RuntimeTrace.error(name, category: "import", metadata: metadata)
     }
 
-    private func traceMetadata(session: ImportSessionRecord, extra: [String: String] = [:]) -> [String: String] {
+    private func traceMetadata(session: ImportSession, extra: [String: String] = [:]) -> [String: String] {
         Self.traceMetadata(session: session, extra: extra)
     }
 
-    private static func traceMetadata(session: ImportSessionRecord, extra: [String: String] = [:]) -> [String: String] {
+    private static func traceMetadata(session: ImportSession, extra: [String: String] = [:]) -> [String: String] {
         var metadata: [String: String] = [
             "session_id": session.id.uuidString,
             "source_kind": sourceKind(session.source),
             "source_name": session.source.displayName,
             "phase": session.phase.rawValue,
-            "project_name": session.projectName,
-            "project_directory": session.projectDirectory.lastPathComponent,
+            "project_name": session.displayProjectName,
+            "project_directory": session.projectDirectory?.lastPathComponent ?? "none",
             "total_items": String(session.totalItems),
             "completed_thumbnails": String(session.completedThumbnails),
             "completed_previews": String(session.completedPreviews),

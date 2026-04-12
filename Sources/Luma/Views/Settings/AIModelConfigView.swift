@@ -55,35 +55,42 @@ struct AIModelConfigView: View {
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(store.modelConfigs) { model in
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(model.name)
-                                        .font(.headline)
-                                    if model.isActive {
-                                        Text("Active")
-                                            .font(.caption2.weight(.semibold))
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
-                                            .background(Color.green.opacity(0.18), in: Capsule())
+                        VStack(spacing: 0) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text(model.name)
+                                            .font(.headline)
+                                        if model.isActive {
+                                            Text("Active")
+                                                .font(.caption2.weight(.semibold))
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 4)
+                                                .background(Color.green.opacity(0.18), in: Capsule())
+                                        }
                                     }
+                                    Text("\(model.apiProtocol.displayName) · \(model.modelId)")
+                                        .foregroundStyle(.secondary)
+                                    Text(model.role.displayName)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
-                                Text("\(model.apiProtocol.displayName) · \(model.modelId)")
-                                    .foregroundStyle(.secondary)
-                                Text(model.role.displayName)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button("编辑") {
+                                    load(model)
+                                }
+                                .stitchHoverDimming()
+                                Button("删除", role: .destructive) {
+                                    store.deleteModel(model.id)
+                                    resetForm()
+                                }
+                                .stitchHoverDimming(opacity: 0.88)
                             }
-                            Spacer()
-                            Button("编辑") {
-                                load(model)
-                            }
-                            Button("删除", role: .destructive) {
-                                store.deleteModel(model.id)
-                                resetForm()
-                            }
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .stitchAdaptiveListRowHover()
+                            Divider()
                         }
-                        Divider()
                     }
                 }
             }
@@ -131,6 +138,7 @@ struct AIModelConfigView: View {
                             save()
                         }
                         .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || modelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .stitchHoverDimming()
 
                         Button("测试连接") {
                             if let editingModelID {
@@ -138,10 +146,12 @@ struct AIModelConfigView: View {
                             }
                         }
                         .disabled(editingModelID == nil)
+                        .stitchHoverDimming()
 
                         Button("新建") {
                             resetForm()
                         }
+                        .stitchHoverDimming()
 
                         Spacer()
                     }

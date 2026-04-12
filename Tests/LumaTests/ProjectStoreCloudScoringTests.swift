@@ -40,8 +40,7 @@ final class ProjectStoreCloudScoringTests: XCTestCase {
             visionProviderFactory: { _ in StoreVisionProviderStub() },
             batchSchedulerFactory: { scheduler }
         )
-        store.assets = [asset1, asset2]
-        store.groups = [group]
+        TestFixtures.seedStore(store, assets: [asset1, asset2], groups: [group])
         store.modelConfigs = [
             TestFixtures.makeModelConfig(name: "Primary Model"),
             ModelConfig(
@@ -97,8 +96,7 @@ final class ProjectStoreCloudScoringTests: XCTestCase {
             visionProviderFactory: { _ in StoreVisionProviderStub() },
             batchSchedulerFactory: { scheduler }
         )
-        store.assets = [asset]
-        store.groups = [group]
+        TestFixtures.seedStore(store, assets: [asset], groups: [group])
         store.modelConfigs = [TestFixtures.makeModelConfig(name: "Primary Model")]
         store.aiScoringStrategy = .budget
         store.aiBudgetLimit = 5.0

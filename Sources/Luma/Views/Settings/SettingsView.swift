@@ -19,12 +19,14 @@ struct SettingsView: View {
                     Button("打开项目库") {
                         store.openProjectLibrary()
                     }
+                    .stitchHoverDimming()
                 }
 
                 Section("开发") {
                     Button("打开性能诊断") {
                         store.openPerformanceDiagnostics()
                     }
+                    .stitchHoverDimming()
                 }
 
                 Section("AI") {

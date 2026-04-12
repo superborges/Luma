@@ -34,6 +34,7 @@ struct PerformanceDiagnosticsView: View {
                         DisplayImageCache.shared.resetDiagnostics()
                         refreshSnapshots()
                     }
+                    .stitchHoverDimming()
                 }
 
                 ToolbarItem(placement: .cancellationAction) {
@@ -41,6 +42,7 @@ struct PerformanceDiagnosticsView: View {
                         closeDiagnostics()
                     }
                     .keyboardShortcut(.cancelAction)
+                    .stitchHoverDimming()
                 }
             }
 
@@ -52,6 +54,7 @@ struct PerformanceDiagnosticsView: View {
                     DisplayImageCache.shared.resetDiagnostics()
                     refreshSnapshots()
                 }
+                .stitchHoverDimming()
 
                 Spacer()
 
@@ -59,6 +62,7 @@ struct PerformanceDiagnosticsView: View {
                     closeDiagnostics()
                 }
                 .keyboardShortcut(.cancelAction)
+                .stitchHoverDimming()
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 16)
@@ -148,6 +152,9 @@ struct PerformanceDiagnosticsView: View {
                 .monospacedDigit()
             Spacer()
         }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .stitchAdaptiveListRowHover()
     }
 
     private func traceRow(_ title: String, _ url: URL?) -> some View {
@@ -168,9 +175,11 @@ struct PerformanceDiagnosticsView: View {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(url.path, forType: .string)
                     }
+                    .stitchHoverDimming()
                     Button("在访达中显示") {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     }
+                    .stitchHoverDimming()
                 }
                 .padding(.leading, 120)
             }

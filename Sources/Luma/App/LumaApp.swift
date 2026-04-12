@@ -52,6 +52,7 @@ struct LumaApp: App {
 
         Settings {
             SettingsView(store: store)
+                .buttonStyle(StitchPressScaleButtonStyle())
         }
     }
 }

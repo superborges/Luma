@@ -175,20 +175,36 @@ enum UISnapshotRenderer {
 
         let manifestURL = resolvedProjectURL.appendingPathComponent("manifest.json")
         let data = try Data(contentsOf: manifestURL)
-        let manifest = try JSONDecoder.lumaDecoder.decode(ProjectManifest.self, from: data)
+        let manifest = try JSONDecoder.lumaDecoder.decode(ExpeditionManifest.self, from: data)
 
         let store = ProjectStore(enableImportMonitoring: false)
         store.currentProjectDirectory = resolvedProjectURL
-        store.projectName = manifest.name
-        store.createdAt = manifest.createdAt
-        store.assets = manifest.assets
-        store.groups = manifest.groups
-        store.selectedGroupID = manifest.groups.first?.id
-        store.selectedAssetID = manifest.groups.first.flatMap { firstGroup in
-            manifest.assets.first(where: { firstGroup.assets.contains($0.id) })?.id
-        } ?? manifest.assets.first?.id
+        store.currentManifestID = manifest.id
+        var expedition = manifest.expedition
+        if expedition.id != manifest.id {
+            expedition = Expedition(
+                id: manifest.id,
+                name: expedition.name,
+                createdAt: expedition.createdAt,
+                updatedAt: expedition.updatedAt,
+                location: expedition.location,
+                tags: expedition.tags,
+                coverAssetID: expedition.coverAssetID,
+                assets: expedition.assets,
+                groups: expedition.groups,
+                importSessions: expedition.importSessions,
+                editingSessions: expedition.editingSessions,
+                exportJobs: expedition.exportJobs
+            )
+        }
+        store.expeditions = [expedition]
+        store.activeExpeditionID = expedition.id
+        store.selectedGroupID = expedition.groups.first?.id
+        store.selectedAssetID = expedition.groups.first.flatMap { firstGroup in
+            expedition.assets.first(where: { firstGroup.assets.contains($0.id) })?.id
+        } ?? expedition.assets.first?.id
         store.displayMode = .grid
-        store.localRejectedCount = manifest.assets.filter(\.isTechnicallyRejected).count
+        store.localRejectedCount = expedition.assets.filter(\.isTechnicallyRejected).count
         return store
     }
 
@@ -331,11 +347,25 @@ enum UISnapshotRenderer {
             ),
         ]
 
+        let previewID = UUID()
+        let expedition = Expedition(
+            id: previewID,
+            name: projectName,
+            createdAt: .now,
+            updatedAt: .now,
+            location: nil,
+            tags: [],
+            coverAssetID: assets.first?.id,
+            assets: assets,
+            groups: groups,
+            importSessions: [],
+            editingSessions: [],
+            exportJobs: []
+        )
         let store = ProjectStore(enableImportMonitoring: false)
-        store.projectName = projectName
-        store.createdAt = .now
-        store.assets = assets
-        store.groups = groups
+        store.currentManifestID = previewID
+        store.expeditions = [expedition]
+        store.activeExpeditionID = previewID
         store.selectedGroupID = groups[0].id
         store.selectedAssetID = groupOneAssets[1].id
         store.displayMode = .grid

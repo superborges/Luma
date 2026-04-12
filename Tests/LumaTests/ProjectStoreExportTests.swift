@@ -15,9 +15,12 @@ final class ProjectStoreExportTests: XCTestCase {
 
     func testPerformExportRejectsWhenNothingIsPicked() async {
         let store = ProjectStore(enableImportMonitoring: false)
-        store.assets = [
-            TestFixtures.makeAsset(baseName: "IMG_5001", captureDate: TestFixtures.makeDate(hour: 13), aiScore: TestFixtures.makeAIScore(overall: 80))
-        ]
+        TestFixtures.seedStore(
+            store,
+            assets: [
+                TestFixtures.makeAsset(baseName: "IMG_5001", captureDate: TestFixtures.makeDate(hour: 13), aiScore: TestFixtures.makeAIScore(overall: 80))
+            ]
+        )
 
         await store.performExport()
 
@@ -60,9 +63,7 @@ final class ProjectStoreExportTests: XCTestCase {
                 recommendedAssets: [picked.id]
             )
 
-            store.projectName = "Export Project"
-            store.assets = [picked, pending]
-            store.groups = [group]
+            TestFixtures.seedStore(store, name: "Export Project", assets: [picked, pending], groups: [group])
             store.isExportPanelPresented = true
             store.exportOptions.destination = .folder
             store.exportOptions.outputPath = outputRoot
@@ -98,8 +99,8 @@ final class ProjectStoreExportTests: XCTestCase {
             )
             picked.previewURL = sourceURL
 
-            store.assets = [picked]
-            store.groups = [TestFixtures.makeGroup(name: "Needs Folder", assets: [picked])]
+            let g = TestFixtures.makeGroup(name: "Needs Folder", assets: [picked])
+            TestFixtures.seedStore(store, assets: [picked], groups: [g])
             store.exportOptions.destination = .folder
             store.exportOptions.outputPath = nil
 

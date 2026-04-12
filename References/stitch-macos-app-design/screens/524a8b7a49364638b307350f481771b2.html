@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-variant": "#353534",
+                        "primary-fixed": "#d8e2ff",
+                        "inverse-on-surface": "#313030",
+                        "on-primary-fixed": "#001a41",
+                        "surface-bright": "#393939",
+                        "secondary-container": "#26467d",
+                        "on-error-container": "#ffdad6",
+                        "surface-tint": "#adc6ff",
+                        "error": "#ffb4ab",
+                        "tertiary": "#ffb595",
+                        "primary-fixed-dim": "#adc6ff",
+                        "on-tertiary-container": "#4c1a00",
+                        "outline-variant": "#414755",
+                        "tertiary-fixed": "#ffdbcc",
+                        "on-tertiary": "#571e00",
+                        "surface-container-low": "#1c1b1b",
+                        "on-primary-fixed-variant": "#004493",
+                        "secondary-fixed": "#d8e2ff",
+                        "surface-container-high": "#2a2a2a",
+                        "on-error": "#690005",
+                        "on-secondary-fixed": "#001a41",
+                        "surface-container-lowest": "#0e0e0e",
+                        "surface-container-highest": "#353534",
+                        "primary": "#adc6ff",
+                        "outline": "#8b90a0",
+                        "inverse-surface": "#e5e2e1",
+                        "error-container": "#93000a",
+                        "on-primary": "#002e69",
+                        "primary-container": "#4b8eff",
+                        "on-secondary-container": "#98b5f3",
+                        "on-tertiary-fixed": "#351000",
+                        "surface-dim": "#131313",
+                        "surface-container": "#201f1f",
+                        "on-background": "#e5e2e1",
+                        "tertiary-container": "#ef6719",
+                        "on-primary-container": "#00285c",
+                        "on-surface": "#e5e2e1",
+                        "on-secondary": "#082f65",
+                        "background": "#131313",
+                        "surface": "#131313",
+                        "on-surface-variant": "#c1c6d7",
+                        "secondary": "#adc6ff",
+                        "on-secondary-fixed-variant": "#26467d",
+                        "on-tertiary-fixed-variant": "#7c2e00",
+                        "tertiary-fixed-dim": "#ffb595",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "inverse-primary": "#005bc1"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #131313; color: #e5e2e1; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
+        .glass-panel { background: rgba(53, 53, 52, 0.7); backdrop-filter: blur(30px); }
+        .primary-gradient { background: linear-gradient(145deg, #adc6ff 0%, #4b8eff 100%); }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #353534; border-radius: 10px; }
+    </style>
+</head>
+<body class="overflow-hidden">
+<header class="flex justify-between items-center px-6 w-full h-14 bg-[#131313] border-b border-[#353534]/15 z-50 fixed top-0 left-0">
+<div class="flex items-center gap-8">
+<span class="text-lg font-black tracking-tighter text-[#adc6ff]">Luma</span>
+<nav class="hidden md:flex gap-6">
+<a class="font-['Inter'] font-semibold text-sm tracking-tight text-[#a1a1a1] hover:bg-[#2a2a2a] transition-colors px-2 py-1" href="#">Recent</a>
+<a class="font-['Inter'] font-semibold text-sm tracking-tight text-[#a1a1a1] hover:bg-[#2a2a2a] transition-colors px-2 py-1" href="#">Projects</a>
+<a class="font-['Inter'] font-semibold text-sm tracking-tight text-[#a1a1a1] hover:bg-[#2a2a2a] transition-colors px-2 py-1" href="#">Templates</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden md:flex items-center bg-[#1c1b1b] px-3 py-1.5 rounded-md gap-2 border border-[#414755]/15">
+<span class="material-symbols-outlined text-sm text-[#a1a1a1]">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-xs text-[#e5e2e1] w-48" placeholder="Search resources..." type="text"/>
+</div>
+<button class="bg-[#2a2a2a] text-[#adc6ff] px-4 py-1.5 rounded text-xs font-bold active:scale-95 duration-150">Start Session</button>
+<span class="material-symbols-outlined text-[#a1a1a1] cursor-pointer hover:text-[#adc6ff]">settings</span>
+<span class="material-symbols-outlined text-[#a1a1a1] cursor-pointer hover:text-[#adc6ff]">help</span>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest overflow-hidden border border-outline-variant/20">
+<img alt="User avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDM9N-VD8PH0uMVz4XeuDRAB9hEwQfv60Izri1pAyh28Mv4UW_2Gwtmbm9-i6Y7NeNWFXTjs8b4frBNvzqSX-hGcPAjQDWWAMx2n2xdjdEqH-cJ0GjA-vknDs2dmI9ZmgrI0akYbD_kcTbKikc_Pp8pD5cT0aFNVlMRaJLrgdowW4dXM40LzjOTiAt1E9ZgxjdZUj5Ccl0aQWsI3liD_NsMtxBJGU7Gz9Vxj4kDOpbCBjykGBTJDQQNvPiEsJgewNq6Phtv67l_MxI"/>
+</div>
+</div>
+</header>
+<aside class="h-screen w-64 fixed left-0 top-0 bg-[#1c1b1b] pt-14 flex flex-col z-40">
+<div class="p-4 flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-[#2a2a2a] flex items-center justify-center">
+<span class="material-symbols-outlined text-[#adc6ff]">photo_library</span>
+</div>
+<div>
+<p class="text-xs font-bold text-[#adc6ff] uppercase tracking-wider">Catalog</p>
+<p class="text-[10px] text-[#a1a1a1]">Local Storage</p>
+</div>
+</div>
+<nav class="flex flex-col px-3 gap-1 mt-2">
+<a class="flex items-center gap-3 text-[#a1a1a1] px-3 py-2.5 rounded-md hover:bg-[#2a2a2a] transition-all group" href="#">
+<span class="material-symbols-outlined text-lg">photo_library</span>
+<span class="text-sm font-medium">Library</span>
+</a>
+<a class="flex items-center gap-3 text-[#a1a1a1] px-3 py-2.5 rounded-md hover:bg-[#2a2a2a] transition-all group" href="#">
+<span class="material-symbols-outlined text-lg">download</span>
+<span class="text-sm font-medium">Imports</span>
+</a>
+<a class="flex items-center gap-3 text-[#a1a1a1] px-3 py-2.5 rounded-md hover:bg-[#2a2a2a] transition-all group" href="#">
+<span class="material-symbols-outlined text-lg">check_circle</span>
+<span class="text-sm font-medium">Culling</span>
+</a>
+<a class="flex items-center gap-3 bg-[#353534] text-[#adc6ff] font-semibold rounded-md px-3 py-2.5" href="#">
+<span class="material-symbols-outlined text-lg" style="font-variation-settings: 'FILL' 1;">tune</span>
+<span class="text-sm">Editing</span>
+</a>
+<a class="flex items-center gap-3 text-[#a1a1a1] px-3 py-2.5 rounded-md hover:bg-[#2a2a2a] transition-all group" href="#">
+<span class="material-symbols-outlined text-lg">ios_share</span>
+<span class="text-sm font-medium">Export</span>
+</a>
+</nav>
+<div class="mt-auto p-3 flex flex-col gap-1 border-t border-[#353534]/20">
+<a class="flex items-center gap-3 text-[#a1a1a1] px-3 py-2 rounded-md hover:bg-[#2a2a2a] transition-all" href="#">
+<span class="material-symbols-outlined text-lg">cloud_done</span>
+<span class="text-sm">Cloud Sync</span>
+</a>
+<a class="flex items-center gap-3 text-[#a1a1a1] px-3 py-2 rounded-md hover:bg-[#2a2a2a] transition-all" href="#">
+<span class="material-symbols-outlined text-lg">delete</span>
+<span class="text-sm">Trash</span>
+</a>
+</div>
+</aside>
+<main class="ml-64 mt-14 h-[calc(100vh-3.5rem)] bg-surface-container-lowest overflow-y-auto">
+<div class="max-w-4xl mx-auto py-6 px-8 flex flex-col gap-1">
+<nav class="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#a1a1a1] font-bold mb-2">
+<span>Editing</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+<span>Global Hub</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+<span class="text-[#adc6ff]">New Session</span>
+</nav>
+<div class="relative rounded-xl overflow-hidden h-40 group mb-6">
+<img alt="Editing Workspace" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBy4kxWlFSBrrx62cJbE-hZIj0mBMyQzGQLYX1rMdTHq-cKDQmbYh0fuwGX8f4dJRMJ4uC1uVhwbTBL-yqkSgbYGLlYqJG332wEEZ12Fbu6Xhr2q1fjunNMzV3k-5JLgP27jg_fDFzAo07TdaRPlupDeTtfu1iUKwJbCUcD9fa_WY7Bz1RxKRXERFfrJVHfs5geh_L4-WW-KdieHd9D3AFsI29_SeHDUgxzLv6z8RZCj95_MSYfJfs3uNXU6beXcmU1wOW_eAVSmoI"/>
+<div class="absolute inset-0 bg-gradient-to-r from-surface-container-lowest via-surface-container-lowest/40 to-transparent"></div>
+<div class="absolute inset-y-0 left-0 flex flex-col justify-center px-8 max-w-lg">
+<h3 class="text-lg font-black text-white flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">verified</span>
+                        Initialize New Session
+                    </h3>
+<p class="text-xs text-on-surface-variant mt-1 leading-relaxed">Pro Environment Ready. Your configuration is optimized for HDR content editing.</p>
+</div>
+</div>
+<div class="flex flex-col gap-3">
+<section class="bg-surface-container-low rounded-lg p-5">
+<div class="flex items-center justify-between mb-4">
+<h2 class="text-sm font-bold flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-lg">data_object</span>
+                            Source Selection
+                        </h2>
+<span class="text-[9px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold uppercase">Required</span>
+</div>
+<div class="grid grid-cols-2 gap-3 mb-4">
+<button class="flex items-center gap-3 text-left p-3 rounded bg-surface-container-highest border border-transparent hover:border-primary/40 transition-all group/card">
+<div class="w-8 h-8 rounded bg-primary/10 flex items-center justify-center group-hover/card:scale-105 transition-transform">
+<span class="material-symbols-outlined text-primary text-lg">folder_open</span>
+</div>
+<div>
+<span class="text-xs font-bold block text-on-surface">Select from Library</span>
+<span class="text-[10px] text-on-surface-variant leading-none">Browse existing catalogs</span>
+</div>
+</button>
+<button class="flex items-center gap-3 text-left p-3 rounded bg-surface-container-highest border border-transparent hover:border-primary/40 transition-all group/card">
+<div class="w-8 h-8 rounded bg-tertiary/10 flex items-center justify-center group-hover/card:scale-105 transition-transform">
+<span class="material-symbols-outlined text-tertiary text-lg">cloud_upload</span>
+</div>
+<div>
+<span class="text-xs font-bold block text-on-surface">Import Assets</span>
+<span class="text-[10px] text-on-surface-variant leading-none">Local or cloud upload</span>
+</div>
+</button>
+</div>
+<div class="pt-3 border-t border-outline-variant/10">
+<p class="text-[9px] font-bold text-outline uppercase mb-3">Recent Expeditions</p>
+<div class="flex gap-4 overflow-x-auto pb-1 no-scrollbar">
+<div class="flex-shrink-0 flex items-center gap-3 w-44 p-1.5 rounded hover:bg-surface-container-highest cursor-pointer transition-colors group/thumb">
+<div class="w-10 h-10 rounded overflow-hidden">
+<img alt="Landscape Thumb" class="w-full h-full object-cover grayscale group-hover/thumb:grayscale-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBMUKRq64W9OnEZW8GGl453ShU0_SVJI1Nqmql9E9KDpPpRZtbYTurXB4-CuKbjBUaTp2NpY4b08Hfn8yTPg1ohvnCV3I6xuIJEhJguj8iipEggOSliRBra5WoNZWEchdzlimlcbIk4nkKbpUV-wauxBW-4UpVAlKyYMX-_4AQRt1uWgmGNWVUMTrbPclBVyCN0oOs_0wFL_JzyC8OUJ5LXAvl8_NJWP7NwuIfNaJYZmS3j3Rb40GqzzcH276vcwi0EuD43_zDuSOY"/>
+</div>
+<div class="overflow-hidden">
+<p class="text-[10px] font-bold truncate">Alps_2024_Q1</p>
+<p class="text-[9px] text-outline">1,240 Assets</p>
+</div>
+</div>
+<div class="flex-shrink-0 flex items-center gap-3 w-44 p-1.5 rounded hover:bg-surface-container-highest cursor-pointer transition-colors group/thumb">
+<div class="w-10 h-10 rounded overflow-hidden">
+<img alt="Urban Thumb" class="w-full h-full object-cover grayscale group-hover/thumb:grayscale-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCSmrbBg3d1RfUzSQlgzWx8-fRR54gNIdWG6rmJO2Dvno6QD9IjfArZ5U9YKxQCJt_0p1e3TR3JKPqmN19nfpHMH9gIQnv4Umy_vKDFOE-cQrvfBfTp3wvT9pFhhXfOJyXOheMSxC48QJUGIuE9CuS7VwYisQ5XGk429V6dzCu4A3JFhYc2b2jN2AILUPs5wqcfslKDKkGW4TFVRnTpovy0UknRtMIzt3P-ti47X_NBB4m-7pJKyowco1d-YgwI4OEgnmDqYplfO8c"/>
+</div>
+<div class="overflow-hidden">
+<p class="text-[10px] font-bold truncate">Tokyo_Nights</p>
+<p class="text-[9px] text-outline">842 Assets</p>
+</div>
+</div>
+<div class="flex-shrink-0 flex items-center gap-3 w-44 p-1.5 rounded hover:bg-surface-container-highest cursor-pointer transition-colors group/thumb">
+<div class="w-10 h-10 rounded overflow-hidden">
+<img alt="Portrait Thumb" class="w-full h-full object-cover grayscale group-hover/thumb:grayscale-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBAYfE0LR1dNgNAuD7Lpk626hCq5DM0qgmCGxTFJEiZeMi4YAI6b2B8syvvZjnjbfA6RxqOQaFm3CaAUbWFznCG5bpiFRSoIDwvWzGbu0iwWrhp35pv8tYM6L1y0PBOTpxCNcMy1KaozNyYsH6BtfeQavvKPH_7qmTJixmQh6lPO19Jxp-NDg1Ovt4-xu9fTOYXlB8aOGDzO2821LzaTkCWRdIipqeArYziyOEwe60Qtj2hCVnsCfmZQ2GqsTJYDexG2GZiy5EcBKs"/>
+</div>
+<div class="overflow-hidden">
+<p class="text-[10px] font-bold truncate">Studio_Series_B</p>
+<p class="text-[9px] text-outline">215 Assets</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section class="bg-surface-container-low rounded-lg p-5">
+<h2 class="text-sm font-bold flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary text-lg">psychology</span>
+                        AI Assistance Level
+                    </h2>
+<div class="grid grid-cols-3 gap-3">
+<label class="relative flex items-center gap-3 p-3 rounded bg-surface-container-highest cursor-pointer border border-transparent has-[:checked]:border-primary/50 transition-all">
+<input checked="" class="sr-only" name="ai_level" type="radio"/>
+<span class="material-symbols-outlined text-lg text-primary">auto_fix_high</span>
+<div class="flex flex-col">
+<span class="text-[11px] font-bold uppercase tracking-tight">Full</span>
+<span class="text-[9px] text-outline">Luma Auto-Grading</span>
+</div>
+</label>
+<label class="relative flex items-center gap-3 p-3 rounded bg-surface-container-highest cursor-pointer border border-transparent has-[:checked]:border-primary/50 transition-all">
+<input class="sr-only" name="ai_level" type="radio"/>
+<span class="material-symbols-outlined text-lg text-on-surface-variant">assistant</span>
+<div class="flex flex-col">
+<span class="text-[11px] font-bold uppercase tracking-tight">Guidance</span>
+<span class="text-[9px] text-outline">Smart Suggest</span>
+</div>
+</label>
+<label class="relative flex items-center gap-3 p-3 rounded bg-surface-container-highest cursor-pointer border border-transparent has-[:checked]:border-primary/50 transition-all">
+<input class="sr-only" name="ai_level" type="radio"/>
+<span class="material-symbols-outlined text-lg text-on-surface-variant">front_hand</span>
+<div class="flex flex-col">
+<span class="text-[11px] font-bold uppercase tracking-tight">Manual</span>
+<span class="text-[9px] text-outline">Zero AI help</span>
+</div>
+</label>
+</div>
+</section>
+<section class="bg-surface-container-low rounded-lg p-5">
+<h2 class="text-sm font-bold mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-lg">settings</span>
+                        Session Configuration
+                    </h2>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<div class="flex flex-col gap-1.5">
+<label class="text-[9px] font-bold text-outline uppercase tracking-widest">Session Name</label>
+<input class="bg-surface-container-lowest border border-outline-variant/10 rounded px-3 py-2 text-xs focus:ring-1 focus:ring-primary text-on-surface" type="text" value="New_Session_2024_05"/>
+</div>
+<div class="flex flex-col gap-1.5">
+<label class="text-[9px] font-bold text-outline uppercase tracking-widest">Output Profile</label>
+<select class="bg-surface-container-lowest border border-outline-variant/10 rounded px-3 py-2 text-xs focus:ring-1 focus:ring-primary text-on-surface appearance-none">
+<option>Master Export (ProRes 4444)</option>
+<option>Social Media (H.264 Optimization)</option>
+<option>Web Archive (WebP / AVIF)</option>
+<option>Print Master (TIFF 16-bit)</option>
+</select>
+</div>
+</div>
+<div class="mt-4 flex items-center justify-between p-2.5 rounded bg-surface-container-lowest border border-outline-variant/10">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-lg" style="font-variation-settings: 'FILL' 1;">memory</span>
+<div class="flex flex-col">
+<span class="text-[10px] font-bold">Hardware Acceleration</span>
+<span class="text-[9px] text-outline">Neural Engine Core v2</span>
+</div>
+</div>
+<div class="w-7 h-4 bg-primary rounded-full relative cursor-pointer">
+<div class="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full"></div>
+</div>
+</div>
+<div class="mt-6 pt-5 border-t border-outline-variant/10 flex items-center justify-between">
+<div class="flex-1 max-w-xs">
+<div class="flex justify-between items-center mb-2">
+<span class="text-[9px] text-on-surface-variant font-bold uppercase tracking-wider">Engine Load</span>
+<span class="text-[10px] font-bold text-primary">32%</span>
+</div>
+<div class="w-full bg-surface-container-lowest h-1 rounded-full overflow-hidden">
+<div class="h-full primary-gradient w-[32%] rounded-full"></div>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1 ml-8">
+<button class="px-6 py-2.5 primary-gradient text-on-primary text-[11px] font-bold rounded flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg shadow-primary/20 uppercase tracking-wider">
+<span class="material-symbols-outlined text-lg">play_circle</span>
+                                Initialize Production
+                            </button>
+<p class="text-[8px] text-outline">Agree to workspace scratch disk settings.</p>
+</div>
+</div>
+</section>
+</div>
+</div>
+</main>
+
+</body></html>

@@ -1,0 +1,349 @@
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>The Digital Darkroom - Export Management</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "tertiary-fixed": "#ffdbcc",
+                      "on-secondary-container": "#98b5f3",
+                      "surface": "#131313",
+                      "on-primary-fixed": "#001a41",
+                      "tertiary-fixed-dim": "#ffb595",
+                      "primary": "#adc6ff",
+                      "tertiary-container": "#ef6719",
+                      "on-primary": "#002e69",
+                      "on-error-container": "#ffdad6",
+                      "on-tertiary": "#571e00",
+                      "secondary-fixed-dim": "#adc6ff",
+                      "surface-container": "#201f1f",
+                      "outline-variant": "#414755",
+                      "surface-container-low": "#1c1b1b",
+                      "on-primary-container": "#00285c",
+                      "surface-bright": "#393939",
+                      "on-error": "#690005",
+                      "inverse-surface": "#e5e2e1",
+                      "error": "#ffb4ab",
+                      "tertiary": "#ffb595",
+                      "inverse-primary": "#005bc1",
+                      "on-tertiary-fixed": "#351000",
+                      "on-secondary-fixed-variant": "#26467d",
+                      "on-secondary": "#082f65",
+                      "secondary-fixed": "#d8e2ff",
+                      "on-surface": "#e5e2e1",
+                      "inverse-on-surface": "#313030",
+                      "primary-fixed-dim": "#adc6ff",
+                      "primary-container": "#4b8eff",
+                      "surface-tint": "#adc6ff",
+                      "secondary-container": "#26467d",
+                      "outline": "#8b90a0",
+                      "on-tertiary-fixed-variant": "#7c2e00",
+                      "secondary": "#adc6ff",
+                      "surface-dim": "#131313",
+                      "surface-container-lowest": "#0e0e0e",
+                      "on-secondary-fixed": "#001a41",
+                      "on-surface-variant": "#c1c6d7",
+                      "on-background": "#e5e2e1",
+                      "background": "#131313",
+                      "on-primary-fixed-variant": "#004493",
+                      "on-tertiary-container": "#4c1a00",
+                      "surface-variant": "#353534",
+                      "error-container": "#93000a",
+                      "primary-fixed": "#d8e2ff",
+                      "surface-container-highest": "#353534",
+                      "surface-container-high": "#2a2a2a"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "fontFamily": {
+                      "headline": ["Inter"],
+                      "body": ["Inter"],
+                      "label": ["Inter"]
+              }
+            },
+          }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #131313; color: #e5e2e1; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
+        .active-icon { font-variation-settings: 'FILL' 1; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #0e0e0e; }
+        ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+    </style>
+</head>
+<body class="overflow-hidden bg-background">
+<aside class="fixed left-0 top-0 h-full z-40 bg-zinc-900/90 dark:bg-zinc-900/90 backdrop-blur-xl w-64 flex flex-col shadow-[32px_0_32px_-16px_rgba(0,0,0,0.3)] font-inter tracking-tight text-sm">
+<div class="p-6">
+<h1 class="text-lg font-bold tracking-tighter text-zinc-100" style="">Luma</h1>
+<p class="text-xs text-zinc-500 mt-0.5" style="">Pro Photographer</p>
+</div>
+<nav class="flex-1 px-4 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="photo_library" style="">photo_library</span>
+<span class="" style="">Library</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="download" style="">download</span>
+<span class="" style="">Imports</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="auto_fix_high" style="">auto_fix_high</span>
+<span class="" style="">Culling</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="tune" style="">tune</span>
+<span class="" style="">Editing</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 bg-zinc-800 text-blue-300 font-semibold rounded-md Active: scale-[0.98] transition-transform" href="#" style="">
+<span class="material-symbols-outlined active-icon" data-icon="ios_share" style="font-variation-settings: &quot;FILL&quot; 1;">ios_share</span>
+<span class="" style="">Export</span>
+</a>
+</nav>
+<div class="p-4 bg-zinc-800/50 mt-auto">
+<div class="flex items-center gap-3 px-2">
+<img class="w-8 h-8 rounded-full object-cover" data-alt="portrait of a professional photographer in a dark studio setting with soft rim lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBPWN9vzCPv0uX2p1EmlQ3QEFs_BNgT0xTfGqH6_lk9yFtJqSb3SaNskiNqyGNs8fCcmqGZzmpIJgq-MSfSZN9RsSG4tFWcan0PWDHdUEBW4aeYQzSYTqS88F0ixSLnc-Aa33ls5fv897R8Q4-eChuvXybxYIpeMN3WZ3dd5SYXkm44FiAFuzYL_UDLsVfCyTav0BeMydF41t_zlgATonByLuk0P4HsPdRusVOjtM3zj36JUAB5shBEcONWo2V-dHi-tNfNIY4xK9c" style="">
+<div class="overflow-hidden">
+<p class="text-xs font-bold text-zinc-100 truncate" style="">User profile avatar</p>
+<p class="text-[10px] text-zinc-500 truncate text-blue-300 uppercase tracking-widest" style="">Active Session</p>
+</div>
+</div>
+</div>
+</aside>
+<main class="ml-64 w-[calc(100%-16rem)] h-screen overflow-y-auto bg-surface-container-lowest flex flex-col">
+<div class="flex-1 p-8 overflow-y-auto">
+<div class="max-w-5xl mx-auto space-y-12 pb-20">
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div>
+<h2 class="text-3xl font-bold tracking-tight text-white mb-2" style="">Export Management</h2>
+<p class="text-on-surface-variant max-w-2xl" style="">Finalize and deliver your visual narratives. Monitor active transfers and manage high-fidelity presets for global distribution.</p>
+</div>
+<div class="relative flex items-center bg-zinc-900 px-3 py-2 rounded-lg ring-1 ring-white/5 h-fit">
+<input class="bg-transparent border-none focus:ring-0 text-xs w-64 text-zinc-300 placeholder-zinc-600" placeholder="Search Exports..." type="text">
+<span class="material-symbols-outlined text-sm text-zinc-500" data-icon="search" style="">search</span>
+</div>
+</div>
+<section class="space-y-6">
+<div class="flex items-center justify-between">
+<h3 class="text-lg font-semibold text-white flex items-center gap-2" style="">
+<span class="material-symbols-outlined text-blue-300" data-icon="schedule" style="">schedule</span>
+                        Active Queue
+                    </h3>
+<span class="text-[10px] px-3 py-1 bg-blue-300/10 text-blue-300 rounded-full font-bold" style="">2 TASKS RUNNING</span>
+</div>
+<div class="grid grid-cols-1 gap-6">
+<div class="bg-surface-container-low p-8 rounded-xl border border-white/5 space-y-6">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-4">
+<div class="w-16 h-16 rounded-md bg-surface-container-highest overflow-hidden">
+<img alt="Kyoto" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA4_nBm0AD-ozkE6p2pb97nXxNHqAh7tCSGNIJydXUzBae6i496gugxz2bEzqeUVYtlfBiFe3YT_HIioiaMxEcXVW-kM9VqOTKSj2rAXQor1JijkQCxEbkwdWKUZkwpYYQNfMFQSxfcZ8X8o51mN1UFBxh85vYdtrYPDyRAvwj3c7tExdhrqDINiipJhZhnsPZKCnHEC_qm_ECzgTATcFs3xdH4DE0frCv_DhPjdcZpJBhP6YKxf5aWhTkRdtlbzG6xu6zok0TPqpQ" style="">
+</div>
+<div>
+<h4 class="text-lg font-bold text-white" style="">Kyoto 2024 - Master Set</h4>
+<p class="text-sm text-outline" style="">Uploading to Creative Cloud...</p>
+</div>
+</div>
+<div class="text-right">
+<span class="text-3xl font-black text-blue-300" style="">74%</span>
+<p class="text-[10px] text-zinc-500 font-mono mt-1" style="">EST. 4 MIN REMAINING</p>
+</div>
+</div>
+<div class="space-y-2">
+<div class="h-2 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary to-primary-container w-[74%] rounded-full"></div>
+</div>
+<div class="flex justify-between text-[10px] text-zinc-500 font-mono tracking-widest">
+<span class="" style="">92 / 124 ASSETS</span>
+<span class="" style="">12.4 MB/s</span>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-low p-8 rounded-xl border border-white/5 space-y-6">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-4">
+<div class="w-16 h-16 rounded-md bg-surface-container-highest overflow-hidden">
+<img alt="Iceland" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA1K1LjugJIQ0TtIPiRG5THCGkd0hMorJwso5I-WZ54inEooUUFY_gqlg0B3jzlHuZQEYH6FFWsgGYouJQR2-_KB8oiUASoWsFiwY3VZxVBxc2o8sq3nK4npBVfMu7_qZTagXdTVyidFW5V7Z_8xj58Q0cpneaNCPRvo9TYhpg1ui7gkCLuqzXA3hGKlSZ3EghSZXlrQUe5juDgQdrmOmCagMCE1IMlM8y18u1RspWkh69d7HLPcsETftq4MrOcMk3ssfLnVn8yyZA" style="">
+</div>
+<div>
+<h4 class="text-lg font-bold text-white" style="">Iceland Highlights</h4>
+<p class="text-sm text-outline" style="">Processing RAW conversion...</p>
+</div>
+</div>
+<div class="text-right">
+<span class="text-3xl font-black text-blue-300" style="">21%</span>
+<p class="text-[10px] text-zinc-500 font-mono mt-1" style="">EST. 12 MIN REMAINING</p>
+</div>
+</div>
+<div class="space-y-2">
+<div class="h-2 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary to-primary-container w-[21%] rounded-full"></div>
+</div>
+<div class="flex justify-between text-[10px] text-zinc-500 font-mono tracking-widest">
+<span class="" style="">10 / 48 ASSETS</span>
+<span class="" style="">SYSTEM LOAD: 42%</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section class="space-y-6">
+<div class="flex items-center justify-between">
+<h3 class="text-lg font-bold text-white" style="">Recent Exports</h3>
+<button class="text-[10px] text-blue-300 border border-blue-300/30 px-4 py-1.5 rounded-full uppercase tracking-tighter hover:bg-blue-300/10 transition-colors" style="">View All Logs</button>
+</div>
+<div class="space-y-4">
+<div class="bg-surface p-5 rounded-xl border border-white/5 flex items-center justify-between group hover:bg-surface-container-low transition-colors duration-300">
+<div class="flex items-center gap-4 flex-1">
+<div class="w-12 h-12 rounded bg-surface-container-highest overflow-hidden shrink-0">
+<img alt="Kyoto" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA4_nBm0AD-ozkE6p2pb97nXxNHqAh7tCSGNIJydXUzBae6i496gugxz2bEzqeUVYtlfBiFe3YT_HIioiaMxEcXVW-kM9VqOTKSj2rAXQor1JijkQCxEbkwdWKUZkwpYYQNfMFQSxfcZ8X8o51mN1UFBxh85vYdtrYPDyRAvwj3c7tExdhrqDINiipJhZhnsPZKCnHEC_qm_ECzgTATcFs3xdH4DE0frCv_DhPjdcZpJBhP6YKxf5aWhTkRdtlbzG6xu6zok0TPqpQ" style="">
+</div>
+<div class="min-w-0">
+<h5 class="text-sm font-semibold text-zinc-100 truncate" style="">Kyoto 2024 - Master Set</h5>
+<p class="text-[10px] text-zinc-500 font-mono mt-0.5" style="">OCT 24, 14:02</p>
+</div>
+</div>
+<div class="flex items-center gap-12 text-xs">
+<div class="w-32">
+<p class="text-outline uppercase text-[9px] tracking-widest mb-1" style="">Destination</p>
+<p class="truncate text-zinc-300" style="">Dropbox / Photos / 2024</p>
+</div>
+<div class="w-20 text-center">
+<p class="text-outline uppercase text-[9px] tracking-widest mb-1" style="">Assets</p>
+<p class="text-zinc-300" style="">124</p>
+</div>
+<div class="w-24 text-right">
+<span class="flex items-center justify-end gap-1.5 text-blue-300 text-[10px] font-bold" style="">
+<span class="material-symbols-outlined text-[14px]" data-icon="cloud_done" style="">cloud_done</span>
+                                    COMPLETE
+                                </span>
+</div>
+</div>
+</div>
+<div class="bg-surface p-5 rounded-xl border border-white/5 flex items-center justify-between group hover:bg-surface-container-low transition-colors duration-300">
+<div class="flex items-center gap-4 flex-1">
+<div class="w-12 h-12 rounded bg-surface-container-highest overflow-hidden shrink-0">
+<img alt="Iceland" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA1K1LjugJIQ0TtIPiRG5THCGkd0hMorJwso5I-WZ54inEooUUFY_gqlg0B3jzlHuZQEYH6FFWsgGYouJQR2-_KB8oiUASoWsFiwY3VZxVBxc2o8sq3nK4npBVfMu7_qZTagXdTVyidFW5V7Z_8xj58Q0cpneaNCPRvo9TYhpg1ui7gkCLuqzXA3hGKlSZ3EghSZXlrQUe5juDgQdrmOmCagMCE1IMlM8y18u1RspWkh69d7HLPcsETftq4MrOcMk3ssfLnVn8yyZA" style="">
+</div>
+<div class="min-w-0">
+<h5 class="text-sm font-semibold text-zinc-100 truncate" style="">Iceland Highlights</h5>
+<p class="text-[10px] text-zinc-500 font-mono mt-0.5" style="">OCT 25, 09:15</p>
+</div>
+</div>
+<div class="flex items-center gap-12 text-xs">
+<div class="w-32">
+<p class="text-outline uppercase text-[9px] tracking-widest mb-1" style="">Destination</p>
+<p class="truncate text-zinc-300" style="">WeTransfer Bundle</p>
+</div>
+<div class="w-20 text-center">
+<p class="text-outline uppercase text-[9px] tracking-widest mb-1" style="">Assets</p>
+<p class="text-zinc-300" style="">48</p>
+</div>
+<div class="w-24 text-right">
+<span class="flex items-center justify-end gap-1.5 text-zinc-500 text-[10px] font-bold" style="">
+<span class="material-symbols-outlined animate-spin text-[14px]" data-icon="sync" style="">sync</span>
+                                    PROCESSING
+                                </span>
+</div>
+</div>
+</div>
+<div class="bg-surface p-5 rounded-xl border border-white/5 flex items-center justify-between group hover:bg-surface-container-low transition-colors duration-300">
+<div class="flex items-center gap-4 flex-1">
+<div class="w-12 h-12 rounded bg-surface-container-highest overflow-hidden shrink-0">
+<img alt="Urban" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAqY_ZWgwwDKo4pEicDIr9TdN97l7dsVAaaVOGtxlNi8no2DT-nj6GH09nOS_oBwaSRgtLc0Zz8k0GtP-21r_XhfL9ja_csUkLYYsAM7hcvCgLAcK1v294UqbVU9-rTOEk0UD-VkdALsy-jIUgS6c1fFcbAgEdo37Qm-ihV2sfPN4eVq0ic7DtMqE00PklxkEifsulBijKd5i15AciudTEzVsu2aaL8dwymICGSKH1tqk8BIVB_NXEexE5K_aV_T3skB60vvfp-Sf4" style="">
+</div>
+<div class="min-w-0">
+<h5 class="text-sm font-semibold text-zinc-100 truncate" style="">Urban Geometry - Social</h5>
+<p class="text-[10px] text-zinc-500 font-mono mt-0.5" style="">OCT 23, 11:44</p>
+</div>
+</div>
+<div class="flex items-center gap-12 text-xs">
+<div class="w-32">
+<p class="text-outline uppercase text-[9px] tracking-widest mb-1" style="">Destination</p>
+<p class="truncate text-zinc-300" style="">Instagram API</p>
+</div>
+<div class="w-20 text-center">
+<p class="text-outline uppercase text-[9px] tracking-widest mb-1" style="">Assets</p>
+<p class="text-zinc-300" style="">12</p>
+</div>
+<div class="w-24 text-right">
+<span class="flex items-center justify-end gap-1.5 text-blue-300 text-[10px] font-bold" style="">
+<span class="material-symbols-outlined text-[14px]" data-icon="cloud_done" style="">cloud_done</span>
+                                    COMPLETE
+                                </span>
+</div>
+</div>
+</div>
+<div class="bg-surface p-5 rounded-xl border border-white/5 flex items-center justify-between group hover:bg-surface-container-low transition-colors duration-300">
+<div class="flex items-center gap-4 flex-1">
+<div class="w-12 h-12 rounded bg-surface-container-highest overflow-hidden shrink-0">
+<img alt="Woods" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBKalLl37VXy5tQ5HWnJVfT-XOJhoYs9SuI-eUDzVFODySbEIVv-3zSYxPrDEzgsu6CumInldEe6RClgiJK9oNXjvDYyCJUDZTlYpj7m_ghwFvcAofnN4kmSCXfKUyH7OOiQ-j6LWKLOD4owIUINHB738Rwf-AMyJEvzzzyD5gzcd_8PlTLCsSAxbGBShdRMxEPm7grCUJYFkooZuT46aPrwOfvNqpKMxdVxtCxgxQj3pvCiQo8IlfVHqhYnpsFFnmkwFVp1bSlDOo" style="">
+</div>
+<div class="min-w-0">
+<h5 class="text-sm font-semibold text-zinc-100 truncate" style="">Pacific NW Woods</h5>
+<p class="text-[10px] text-zinc-500 font-mono mt-0.5" style="">OCT 22, 18:22</p>
+</div>
+</div>
+<div class="flex items-center gap-12 text-xs">
+<div class="w-32">
+<p class="text-outline uppercase text-[9px] tracking-widest mb-1" style="">Destination</p>
+<p class="truncate text-zinc-300" style="">External Drive (SSD 02)</p>
+</div>
+<div class="w-20 text-center">
+<p class="text-outline uppercase text-[9px] tracking-widest mb-1" style="">Assets</p>
+<p class="text-zinc-300" style="">210</p>
+</div>
+<div class="w-24 text-right">
+<span class="flex items-center justify-end gap-1.5 text-blue-300 text-[10px] font-bold" style="">
+<span class="material-symbols-outlined text-[14px]" data-icon="cloud_done" style="">cloud_done</span>
+                                    COMPLETE
+                                </span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+<footer class="p-6 bg-surface-container-lowest border-t border-white/5 shrink-0">
+<div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="bg-surface-container-low p-4 rounded-lg border border-white/5 flex items-center justify-between">
+<div>
+<p class="text-[10px] uppercase tracking-widest text-outline mb-0.5" style="">Total Delivered</p>
+<p class="text-xl font-bold text-white" style="">4,281</p>
+</div>
+<div class="text-[10px] text-blue-300 bg-blue-300/10 px-2 py-1 rounded" style="">
+                    +12%
+                </div>
+</div>
+<div class="bg-surface-container-low p-4 rounded-lg border border-white/5 flex items-center justify-between">
+<div>
+<p class="text-[10px] uppercase tracking-widest text-outline mb-0.5" style="">Avg. Export Speed</p>
+<p class="text-xl font-bold text-white" style="">124 MB/s</p>
+</div>
+<span class="material-symbols-outlined text-zinc-500 text-sm" data-icon="bolt" style="">bolt</span>
+</div>
+<div class="bg-surface-container-low p-4 rounded-lg border border-white/5 flex flex-col justify-center">
+<div class="flex justify-between items-end mb-1.5">
+<p class="text-[10px] uppercase tracking-widest text-outline" style="">Storage Usage</p>
+<p class="text-xs font-bold text-white" style="">82%</p>
+</div>
+<div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="w-[82%] h-full bg-blue-300"></div>
+</div>
+</div>
+</div>
+</footer>
+</main>
+
+</body></html>

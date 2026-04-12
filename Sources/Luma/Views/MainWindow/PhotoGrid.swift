@@ -254,6 +254,7 @@ struct PhotoGrid: View {
         }
         .menuStyle(.borderlessButton)
         .disabled(!hasSelection)
+        .stitchHoverDimming()
     }
 
     private func toolbarPickPill(shortcut: String, title: String, action: @escaping () -> Void) -> some View {
@@ -276,6 +277,7 @@ struct PhotoGrid: View {
         .buttonStyle(.plain)
         .disabled(!hasSelection)
         .opacity(hasSelection ? 1 : 0.5)
+        .stitchHoverDimming()
     }
 
     private func toolbarRejectPill(shortcut: String, title: String, action: @escaping () -> Void) -> some View {
@@ -294,6 +296,7 @@ struct PhotoGrid: View {
         .buttonStyle(.plain)
         .disabled(!hasSelection)
         .opacity(hasSelection ? 1 : 0.5)
+        .stitchHoverDimming()
     }
 
     /// Glass Dark 次要操作
@@ -312,6 +315,7 @@ struct PhotoGrid: View {
         .buttonStyle(.plain)
         .disabled(!hasSelection)
         .opacity(hasSelection ? 1 : 0.5)
+        .stitchHoverDimming()
     }
 
     private func toolbarMonochromeMenuPill(shortcut: String, title: String) -> some View {
@@ -426,6 +430,7 @@ private struct BurstCell: View {
                             .scaledToFill()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .opacity(burst.coverAsset.userDecision == .rejected || burst.coverAsset.isTechnicallyRejected ? 0.52 : 1)
+                            .stitchAssetPreviewHoverScale()
                     } else {
                         ProgressView()
                             .controlSize(.regular)
@@ -516,6 +521,7 @@ private struct BurstThumbnailChip: View {
                         .scaledToFill()
                         .frame(width: 120, height: 92)
                         .opacity(asset.userDecision == .rejected || asset.isTechnicallyRejected ? 0.52 : 1)
+                        .stitchAssetPreviewHoverScale(1.04, duration: 0.2)
                 } else {
                     ProgressView()
                         .controlSize(.small)
@@ -668,6 +674,7 @@ private struct ThumbnailCell: View {
                         .scaledToFill()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .opacity(asset.userDecision == .rejected || asset.isTechnicallyRejected ? 0.52 : 1)
+                        .stitchAssetPreviewHoverScale()
                 } else {
                     ProgressView()
                         .controlSize(.regular)

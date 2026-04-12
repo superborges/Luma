@@ -192,6 +192,9 @@ struct DetailPanel: View {
         }
         .font(.callout.weight(.light))
         .kerning(DesignType.bodyKerning)
+        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .stitchAdaptiveListRowHover()
     }
 
     private func sectionHeader(_ title: String, icon: String) -> some View {

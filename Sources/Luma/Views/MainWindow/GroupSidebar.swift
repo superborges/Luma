@@ -213,6 +213,7 @@ struct GroupSidebar: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .stitchUnselectedHoverWash(isSelected: isSelected)
     }
 
     private var sidebarBackground: Color {

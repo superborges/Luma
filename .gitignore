@@ -6,4 +6,6 @@ DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
+# Cursor MCP may contain API keys — keep local only
+.cursor/mcp.json
 Artifacts/

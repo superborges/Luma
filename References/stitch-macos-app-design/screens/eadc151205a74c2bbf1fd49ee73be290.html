@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "inverse-primary": "#005bc1",
+            "surface-tint": "#adc6ff",
+            "background": "#131313",
+            "surface-dim": "#131313",
+            "on-primary-fixed-variant": "#004493",
+            "on-secondary-fixed-variant": "#26467d",
+            "tertiary-container": "#ef6719",
+            "secondary": "#adc6ff",
+            "on-tertiary-container": "#4c1a00",
+            "secondary-fixed-dim": "#adc6ff",
+            "inverse-surface": "#e5e2e1",
+            "on-error": "#690005",
+            "surface-container-high": "#2a2a2a",
+            "on-secondary": "#082f65",
+            "surface-bright": "#393939",
+            "on-error-container": "#ffdad6",
+            "secondary-fixed": "#d8e2ff",
+            "on-tertiary-fixed-variant": "#7c2e00",
+            "outline-variant": "#414755",
+            "on-secondary-container": "#98b5f3",
+            "outline": "#8b90a0",
+            "surface-variant": "#353534",
+            "primary-fixed": "#d8e2ff",
+            "error-container": "#93000a",
+            "on-primary": "#002e69",
+            "on-tertiary": "#571e00",
+            "on-surface": "#e5e2e1",
+            "surface": "#131313",
+            "surface-container-lowest": "#0e0e0e",
+            "tertiary-fixed": "#ffdbcc",
+            "on-tertiary-fixed": "#351000",
+            "on-surface-variant": "#c1c6d7",
+            "surface-container-highest": "#353534",
+            "on-background": "#e5e2e1",
+            "on-primary-container": "#00285c",
+            "tertiary-fixed-dim": "#ffb595",
+            "surface-container": "#201f1f",
+            "inverse-on-surface": "#313030",
+            "primary-container": "#4b8eff",
+            "on-primary-fixed": "#001a41",
+            "secondary-container": "#26467d",
+            "primary": "#adc6ff",
+            "error": "#ffb4ab",
+            "surface-container-low": "#1c1b1b",
+            "primary-fixed-dim": "#adc6ff",
+            "on-secondary-fixed": "#001a41",
+            "tertiary": "#ffb595"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.125rem",
+            "lg": "0.25rem",
+            "xl": "0.5rem",
+            "full": "0.75rem"
+          },
+          "fontFamily": {
+            "headline": ["Inter"],
+            "body": ["Inter"],
+            "label": ["Inter"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    body { font-family: 'Inter', sans-serif; background-color: #131313; color: #e5e2e1; }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    .glass-panel { background: rgba(53, 53, 52, 0.7); backdrop-filter: blur(30px); }
+    .primary-gradient { background: linear-gradient(145deg, #adc6ff 0%, #4b8eff 100%); }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+<!-- SideNavBar Component -->
+<aside class="h-screen w-64 docked left-0 bg-[#1c1b1b] border-r border-white/5 flex flex-col py-6 px-4 shrink-0">
+<div class="mb-8 px-2">
+<h1 class="text-lg font-bold tracking-tighter text-[#adc6ff]">Luma</h1>
+<p class="font-['Inter'] text-[10px] uppercase tracking-widest font-semibold text-[#a1a1a1] mt-1">Professional Digital Darkroom</p>
+</div>
+<nav class="flex-1 space-y-1">
+<div class="flex items-center gap-3 px-3 py-2 text-[#a1a1a1] hover:bg-[#2a2a2a] transition-colors duration-200 cursor-pointer rounded-md">
+<span class="material-symbols-outlined text-lg">photo_library</span>
+<span class="font-['Inter'] text-sm tracking-tight font-medium">Library</span>
+</div>
+<div class="flex items-center gap-3 px-3 py-2 text-[#a1a1a1] hover:bg-[#2a2a2a] transition-colors duration-200 cursor-pointer rounded-md">
+<span class="material-symbols-outlined text-lg">download</span>
+<span class="font-['Inter'] text-sm tracking-tight font-medium">Imports</span>
+</div>
+<div class="flex items-center gap-3 px-3 py-2 text-[#a1a1a1] hover:bg-[#2a2a2a] transition-colors duration-200 cursor-pointer rounded-md">
+<span class="material-symbols-outlined text-lg">check_circle</span>
+<span class="font-['Inter'] text-sm tracking-tight font-medium">Culling</span>
+</div>
+<div class="flex items-center gap-3 px-3 py-2 text-[#a1a1a1] hover:bg-[#2a2a2a] transition-colors duration-200 cursor-pointer rounded-md">
+<span class="material-symbols-outlined text-lg">tune</span>
+<span class="font-['Inter'] text-sm tracking-tight font-medium">Editing</span>
+</div>
+<!-- Active Tab: Export -->
+<div class="flex items-center gap-3 px-3 py-2 bg-[#353534] text-[#adc6ff] rounded-md transition-all scale-98 active:opacity-80">
+<span class="material-symbols-outlined text-lg">ios_share</span>
+<span class="font-['Inter'] text-sm tracking-tight font-medium">Export</span>
+</div>
+</nav>
+<div class="mt-auto px-2 flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="close-up portrait of a professional photographer with glasses in a dark studio setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBuiosXmZS8ZpPSP63yI4zqk23ZB-lVmiD89Q-Q691dtgGZhA4IJ_5dk8Ue-3YPjRD9svNUjYRejqhJ4SUx0jGZpc-m_vkLD1jArjAEaUxxD59Uq8-MXonz1ZNErw6SMUfi3rVyfnY1g2-NNSwdv9l9qkNem4qynFPpzSuRu7KcMce8hO9oDsAejnzjGNMU9szani_CttKrkX8SvmP4tj6uPTCeId_DSDfJ4bUKaEoPt74J75Gt00kD_Ss_peH66VLAu3Iu2srgfZ4"/>
+</div>
+<div class="flex flex-col">
+<span class="text-xs font-semibold">User profile</span>
+<span class="text-[10px] text-outline">Pro Plan</span>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col min-w-0 bg-background">
+<!-- TopAppBar Component -->
+<header class="flex justify-between items-center h-12 px-6 bg-[#131313]/80 backdrop-blur-xl border-b border-white/5 sticky top-0 z-10">
+<div class="flex items-center gap-2 font-['Inter'] text-xs uppercase tracking-widest font-semibold">
+<span class="text-[#a1a1a1] hover:text-white transition-colors cursor-pointer">Library</span>
+<span class="material-symbols-outlined text-[10px] text-outline">chevron_right</span>
+<span class="text-[#a1a1a1] hover:text-white transition-colors cursor-pointer">Expeditions</span>
+<span class="material-symbols-outlined text-[10px] text-outline">chevron_right</span>
+<span class="text-[#a1a1a1] hover:text-white transition-colors cursor-pointer">Kyoto 2024</span>
+<span class="material-symbols-outlined text-[10px] text-outline">chevron_right</span>
+<span class="text-[#adc6ff]">Export</span>
+</div>
+<div class="flex items-center gap-6">
+<button class="text-[10px] font-bold uppercase tracking-widest text-[#adc6ff] bg-secondary-container/30 px-3 py-1.5 rounded-md hover:bg-secondary-container/50 transition-colors">Process Queue</button>
+<div class="flex items-center gap-4 text-[#a1a1a1]">
+<span class="material-symbols-outlined text-lg cursor-pointer hover:text-white transition-colors">settings</span>
+<span class="material-symbols-outlined text-lg cursor-pointer hover:text-white transition-colors">help</span>
+</div>
+</div>
+</header>
+<!-- Scrollable Canvas -->
+<div class="flex-1 overflow-y-auto hide-scrollbar p-10 space-y-12 max-w-5xl mx-auto w-full">
+<!-- Section 1: Header -->
+<section class="space-y-2">
+<h2 class="text-4xl font-bold tracking-tight">Export Expedition: Kyoto 2024</h2>
+<div class="flex items-center gap-6 text-sm">
+<div class="flex items-center gap-2 bg-surface-container-low px-3 py-1 rounded-full">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<span class="text-on-surface-variant"><strong class="text-on-surface">892</strong> Picked RAWs</span>
+</div>
+<div class="flex items-center gap-2 bg-surface-container-low px-3 py-1 rounded-full">
+<span class="w-2 h-2 rounded-full bg-error"></span>
+<span class="text-on-surface-variant"><strong class="text-on-surface">244</strong> Rejected</span>
+</div>
+</div>
+</section>
+<!-- Section 2: Destination Selection (Bento-style cards) -->
+<section class="space-y-6">
+<div class="flex items-center justify-between">
+<h3 class="text-sm font-semibold text-outline uppercase tracking-widest">Target Destination</h3>
+<span class="text-xs text-primary cursor-pointer">Configure Destinations</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<!-- Apple Photos -->
+<div class="group relative bg-surface-container-low p-6 rounded-xl border border-white/0 hover:border-primary/20 transition-all cursor-pointer overflow-hidden">
+<div class="relative z-10">
+<span class="material-symbols-outlined text-3xl mb-4 text-[#adc6ff]">photo_library</span>
+<h4 class="font-bold text-lg">Apple Photos</h4>
+<p class="text-xs text-on-surface-variant mt-1">Sync to iCloud Library &amp; Shared Albums</p>
+</div>
+<div class="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</div>
+<!-- Lightroom -->
+<div class="group relative bg-surface-container-highest p-6 rounded-xl border border-primary/40 transition-all cursor-pointer overflow-hidden shadow-2xl">
+<div class="relative z-10">
+<div class="flex justify-between items-start mb-4">
+<span class="material-symbols-outlined text-3xl text-[#adc6ff]">filter_vintage</span>
+<span class="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded font-bold">XMP READY</span>
+</div>
+<h4 class="font-bold text-lg">Lightroom Classic</h4>
+<p class="text-xs text-on-surface-variant mt-1">Export to Catalog with Smart Previews</p>
+</div>
+<div class="absolute bottom-[-20%] right-[-10%] opacity-10">
+<span class="material-symbols-outlined text-[120px]">tune</span>
+</div>
+</div>
+<!-- Local Folder -->
+<div class="group relative bg-surface-container-low p-6 rounded-xl border border-white/0 hover:border-primary/20 transition-all cursor-pointer overflow-hidden">
+<div class="relative z-10">
+<span class="material-symbols-outlined text-3xl mb-4 text-[#adc6ff]">folder_open</span>
+<h4 class="font-bold text-lg">Local Folder</h4>
+<p class="text-xs text-on-surface-variant mt-1">Direct file system export at full res</p>
+</div>
+<div class="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</div>
+</div>
+</section>
+<!-- Section 3 & 4: Settings & Archive (Two column layout) -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+<!-- Intelligent Settings -->
+<section class="space-y-6">
+<h3 class="text-sm font-semibold text-outline uppercase tracking-widest">Intelligent Settings</h3>
+<div class="space-y-3">
+<!-- Toggle 1 -->
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-lg hover:bg-surface-container-high transition-colors group">
+<div class="flex flex-col">
+<span class="text-sm font-medium">Merge RAW + JPEG</span>
+<span class="text-[10px] text-outline">Consolidate image stacks into single assets</span>
+</div>
+<div class="w-10 h-5 bg-primary/30 rounded-full relative transition-colors cursor-pointer border border-primary/20">
+<div class="absolute top-0.5 right-0.5 w-4 h-4 bg-primary rounded-full"></div>
+</div>
+</div>
+<!-- Toggle 2 -->
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-lg hover:bg-surface-container-high transition-colors">
+<div class="flex flex-col">
+<span class="text-sm font-medium">Write AI Comments to Metadata</span>
+<span class="text-[10px] text-outline">Embed scene descriptions into IPTC fields</span>
+</div>
+<div class="w-10 h-5 bg-surface-container-highest rounded-full relative transition-colors cursor-pointer">
+<div class="absolute top-0.5 left-0.5 w-4 h-4 bg-outline rounded-full"></div>
+</div>
+</div>
+<!-- Toggle 3 -->
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-lg hover:bg-surface-container-high transition-colors">
+<div class="flex flex-col">
+<span class="text-sm font-medium text-primary">Apply AI Retouching Parameters</span>
+<span class="text-[10px] text-outline">Neural enhancement for face and skin tones</span>
+</div>
+<div class="w-10 h-5 bg-primary/30 rounded-full relative transition-colors cursor-pointer border border-primary/20">
+<div class="absolute top-0.5 right-0.5 w-4 h-4 bg-primary rounded-full"></div>
+</div>
+</div>
+<!-- Toggle 4 -->
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-lg hover:bg-surface-container-high transition-colors">
+<div class="flex flex-col">
+<span class="text-sm font-medium">Generate XMP Sidecars</span>
+<span class="text-[10px] text-outline">Ensures non-destructive edit compatibility</span>
+</div>
+<div class="w-10 h-5 bg-primary/30 rounded-full relative transition-colors cursor-pointer border border-primary/20">
+<div class="absolute top-0.5 right-0.5 w-4 h-4 bg-primary rounded-full"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Archive Handling -->
+<section class="space-y-6">
+<h3 class="text-sm font-semibold text-outline uppercase tracking-widest">Rejected Asset Archive</h3>
+<div class="bg-surface-container-lowest p-6 rounded-xl border border-white/5 space-y-4">
+<div class="flex items-center gap-4 mb-2">
+<div class="w-12 h-12 bg-tertiary-container/20 rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary">delete_sweep</span>
+</div>
+<div>
+<p class="text-xs text-on-surface-variant leading-relaxed">Choose how to handle the <span class="text-tertiary font-bold">244 files</span> you marked for rejection during the Kyoto Expedition.</p>
+</div>
+</div>
+<div class="space-y-2">
+<label class="flex items-center gap-3 p-3 bg-surface-container-low rounded-lg border border-transparent hover:border-white/10 cursor-pointer">
+<input class="text-primary bg-background focus:ring-0" name="archive" type="radio"/>
+<div class="flex flex-col">
+<span class="text-sm font-medium">Create 1080p Memories Video</span>
+<span class="text-[10px] text-outline">Render a fast H.265 timelapse of outtakes</span>
+</div>
+</label>
+<label class="flex items-center gap-3 p-3 bg-surface-container-low rounded-lg border border-primary/20 cursor-pointer">
+<input checked="" class="text-primary bg-background focus:ring-0" name="archive" type="radio"/>
+<div class="flex flex-col">
+<span class="text-sm font-medium">Shrink &amp; Keep JPEG</span>
+<span class="text-[10px] text-outline">Delete RAWs, save 2MP thumbnails for reference</span>
+</div>
+</label>
+<label class="flex items-center gap-3 p-3 bg-surface-container-low rounded-lg border border-transparent hover:border-white/10 cursor-pointer">
+<input class="text-primary bg-background focus:ring-0" name="archive" type="radio"/>
+<div class="flex flex-col">
+<span class="text-sm font-medium text-error">Discard</span>
+<span class="text-[10px] text-outline">Permanently erase all rejected assets</span>
+</div>
+</label>
+</div>
+</div>
+</section>
+</div>
+<!-- Footer Action -->
+<footer class="pt-8 pb-16 flex flex-col items-center">
+<button class="primary-gradient w-full max-w-md py-4 rounded-xl flex items-center justify-center gap-3 text-on-primary font-bold shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">rocket_launch</span>
+          Start Export &amp; Archive
+        </button>
+<p class="text-[10px] text-outline mt-4 uppercase tracking-[0.2em]">Estimated process time: 4 minutes 20 seconds</p>
+</footer>
+</div>
+</main>
+<!-- Side Inspector (Hidden on smaller screens, shown for context) -->
+<aside class="w-80 bg-surface-container-low border-l border-white/5 p-6 flex flex-col gap-8">
+<div>
+<h4 class="text-[10px] font-bold text-outline uppercase tracking-widest mb-4">Summary</h4>
+<div class="aspect-square w-full rounded-lg bg-surface-container-lowest overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="vibrant view of a traditional japanese temple in kyoto surrounded by autumn maples at twilight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBMRB8LZWdiWShU7EgNdGgaRicL3ffZ-geNPnqCnWIMM9_meINf3DLVAAiuiXggbB9r5zGkL62x0IGEKxiDnw_6DWcNyf-G5m45ldytcQmrxyahT-w8Sodq1BvNvpXWszjma_25i1TvrMN5yb0rtwy_TfwFz0da3XJT1Tmfv96TPrap8ymd9Ukn-3Y4GuothOr3kSpI2-SgdLzk9UcpXl0NkAgNYNw7LoS1Sx5yhMUDhyi3e9X46cLhFxQlB6Wi8mJN2ai3FWdk29I"/>
+</div>
+<div class="mt-4 space-y-2">
+<div class="flex justify-between text-xs">
+<span class="text-outline">Expedition</span>
+<span>Kyoto 2024</span>
+</div>
+<div class="flex justify-between text-xs">
+<span class="text-outline">Total Assets</span>
+<span>1,136 items</span>
+</div>
+<div class="flex justify-between text-xs">
+<span class="text-outline">Size</span>
+<span>42.8 GB</span>
+</div>
+</div>
+</div>
+<div>
+<h4 class="text-[10px] font-bold text-outline uppercase tracking-widest mb-4">Export Map</h4>
+<div class="w-full aspect-[4/3] rounded-lg bg-surface-container-lowest overflow-hidden relative">
+<img class="w-full h-full object-cover opacity-50 grayscale" data-alt="minimal grayscale digital map of kyoto city streets with subtle topographical lines" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAcfVZMBwvTWK1PK98pICkyqVFpUdwnuTSktG_MUJ88h7ZZiHWGKPa1RXZBYAf0FRjgwtm_kbG_qL9m0GhZj4kbctQBSo8oRv8SaLSXHg4gaJia6tif55WgAZJiXCQ2KX1eK_y0fhCt3j9AnFeN9LFo2IGkBMa6xqW-lNaZGGgoHKDHrLxNSsixZP2R9AhaYl9QYH8CuieUoAfkz6RQNBCK7DEKxVDmlyWiLy0gABMLO24yrCDPWC2xnBg6GTDyXArKOsBrwl-tTac"/>
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-4 h-4 bg-primary rounded-full animate-pulse shadow-[0_0_15px_rgba(173,198,255,0.8)]"></div>
+</div>
+<div data-location="Kyoto, Japan" style=""></div>
+</div>
+</div>
+</aside>
+</body></html>

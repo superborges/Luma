@@ -243,8 +243,8 @@ enum TestFixtures {
         completedPreviews: Int = 0,
         completedOriginals: Int = 0,
         lastError: String? = nil
-    ) -> ImportSessionRecord {
-        ImportSessionRecord(
+    ) -> ImportSession {
+        ImportSession(
             id: id,
             source: source,
             projectDirectory: projectDirectory,
@@ -257,7 +257,9 @@ enum TestFixtures {
             completedThumbnails: completedThumbnails,
             completedPreviews: completedPreviews,
             completedOriginals: completedOriginals,
-            lastError: lastError
+            lastError: lastError,
+            completedAt: nil,
+            importedAssetIDs: []
         )
     }
 
@@ -266,8 +268,8 @@ enum TestFixtures {
         createdAt: Date = makeDate(hour: 9),
         assets: [MediaAsset],
         groups: [PhotoGroup]
-    ) -> ProjectManifest {
-        ProjectManifest(
+    ) -> ExpeditionManifest {
+        ExpeditionManifest(
             id: UUID(),
             name: name,
             createdAt: createdAt,
@@ -276,9 +278,37 @@ enum TestFixtures {
         )
     }
 
-    static func writeManifest(_ manifest: ProjectManifest, in directory: URL) throws {
+    static func writeManifest(_ manifest: ExpeditionManifest, in directory: URL) throws {
         let data = try JSONEncoder.lumaEncoder.encode(manifest)
         try data.write(to: AppDirectories.manifestURL(in: directory), options: [.atomic])
+    }
+
+    /// Seeds `ProjectStore` with an in-memory expedition so `assets` / `groups` setters work under @testable.
+    @MainActor
+    static func seedStore(
+        _ store: ProjectStore,
+        name: String = "Test",
+        assets: [MediaAsset],
+        groups: [PhotoGroup] = []
+    ) {
+        let id = UUID()
+        let expedition = Expedition(
+            id: id,
+            name: name,
+            createdAt: .now,
+            updatedAt: .now,
+            location: nil,
+            tags: [],
+            coverAssetID: assets.first?.id,
+            assets: assets,
+            groups: groups,
+            importSessions: [],
+            editingSessions: [],
+            exportJobs: []
+        )
+        store.expeditions = [expedition]
+        store.activeExpeditionID = id
+        store.currentManifestID = id
     }
 
     static func makeModelConfig(

@@ -9,95 +9,28 @@ struct ContentView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            StatusBarView(store: store)
-
-            HSplitView {
-                GroupSidebar(store: store)
-                    .frame(minWidth: 220, idealWidth: 240, maxWidth: 280, maxHeight: .infinity)
-
-                PhotoGrid(store: store)
-                    .frame(minWidth: 360, idealWidth: 440, maxWidth: .infinity, maxHeight: .infinity)
-
-                DetailPanel(store: store)
-                    .frame(minWidth: 240, idealWidth: 280, maxWidth: 320, maxHeight: .infinity)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        HStack(spacing: 0) {
+            SideNavBar(currentSection: $store.currentSection)
+            sectionContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    Task { await store.importFolder() }
-                } label: {
-                    Label("导入文件夹", systemImage: "square.and.arrow.down")
-                }
-
-                Button {
-                    Task { await store.importSDCard() }
-                } label: {
-                    Label("导入 SD 卡", systemImage: "memorycard")
-                }
-
-                Button {
-                    Task { await store.importIPhone() }
-                } label: {
-                    Label("导入 iPhone", systemImage: "iphone")
-                }
-
-                Button {
-                    store.openProjectLibrary()
-                } label: {
-                    Label("项目库", systemImage: "books.vertical")
-                }
-
-                Button {
-                    store.openPerformanceDiagnostics()
-                } label: {
-                    Label("性能诊断", systemImage: "speedometer")
-                }
-
-                if store.recoverableImportSession != nil {
-                    Button {
-                        Task { await store.resumeRecoverableImport() }
-                    } label: {
-                        Label("继续导入", systemImage: "arrow.clockwise")
-                    }
-                    .disabled(store.isImporting)
-                }
-
-                Button {
-                    store.toggleDisplayMode()
-                } label: {
-                    Label(
-                        store.displayMode == .grid ? "单张查看" : "网格查看",
-                        systemImage: store.displayMode == .grid ? "rectangle.inset.filled" : "square.grid.2x2"
-                    )
-                }
-                .disabled(store.selectedAsset == nil)
-
-                Button {
-                    Task { await store.startCloudScoring() }
-                } label: {
-                    Label("开始 AI 评分", systemImage: "sparkles")
-                }
-                .disabled(store.isCloudScoring || store.activePrimaryModel == nil || store.assets.isEmpty)
-
-                Button {
-                    store.openExportPanel()
-                } label: {
-                    Label("导出选中", systemImage: "square.and.arrow.up")
-                }
-                .disabled(store.assets.isEmpty || store.pickedAssetsCount == 0)
-            }
-        }
+        .buttonStyle(StitchPressScaleButtonStyle())
+        .preferredColorScheme(.dark)
+        .toolbarBackground(StitchTheme.background, for: .windowToolbar)
+        .toolbarBackground(.visible, for: .windowToolbar)
+        .toolbarColorScheme(.dark, for: .windowToolbar)
+        .background(MainWindowTitleConfig())
         .sheet(isPresented: $store.isExportPanelPresented) {
             ExportPanelView(store: store)
+                .buttonStyle(StitchPressScaleButtonStyle())
         }
         .sheet(isPresented: $store.isProjectLibraryPresented) {
             ProjectLibraryView(store: store)
+                .buttonStyle(StitchPressScaleButtonStyle())
         }
         .sheet(isPresented: $store.isPerformanceDiagnosticsPresented) {
             PerformanceDiagnosticsView(store: store)
+                .buttonStyle(StitchPressScaleButtonStyle())
         }
         .overlay(alignment: .bottom) {
             if let progress = store.importProgress, store.isImporting || progress.phase == .paused {
@@ -151,6 +84,22 @@ struct ContentView: View {
                 handleKeyEvent(event)
             }
         )
+    }
+
+    @ViewBuilder
+    private var sectionContent: some View {
+        switch store.currentSection {
+        case .library:
+            LibraryHubView(store: store)
+        case .imports:
+            ImportsHubView(store: store)
+        case .culling:
+            CullingHubView(store: store)
+        case .editing:
+            EditingHubView()
+        case .export:
+            ExportHubView(store: store)
+        }
     }
 
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
@@ -216,6 +165,7 @@ struct ContentView: View {
 
     private func shouldHandleKeyEvent(_ event: NSEvent) -> Bool {
         guard NSApp.keyWindow != nil,
+              store.currentSection == .culling,
               store.assets.isEmpty == false,
               store.pendingImportPrompt == nil,
               store.isExportPanelPresented == false,
@@ -230,114 +180,5 @@ struct ContentView: View {
         }
 
         return event.type == .keyDown
-    }
-}
-
-private struct StatusBarView: View {
-    let store: ProjectStore
-
-    var body: some View {
-        VStack(spacing: AppSpacing.md) {
-            HStack(spacing: AppSpacing.xxl) {
-                Text(store.projectName)
-                    .font(.headline.weight(.medium))
-                    .kerning(DesignType.titleKerning)
-
-                HStack(spacing: AppSpacing.xs) {
-                    Text("\(store.assets.count)")
-                        .font(.callout.monospacedDigit().weight(.medium))
-                    Text("张")
-                        .font(.caption.weight(.light))
-                        .foregroundStyle(.secondary)
-                    Text("·")
-                        .foregroundStyle(.quaternary)
-                    Text("\(store.groups.count)")
-                        .font(.callout.monospacedDigit().weight(.medium))
-                    Text("组")
-                        .font(.caption.weight(.light))
-                        .foregroundStyle(.secondary)
-                }
-
-                Divider()
-                    .frame(height: 14)
-
-                statusPill("已选", value: store.pickedCount, tint: LumaSemantic.pick)
-                statusPill("待定", value: store.pendingCount, tint: LumaSemantic.pending)
-                statusPill("拒绝", value: store.rejectedCount, tint: LumaSemantic.reject)
-                statusPill("推荐", value: store.recommendedCount, tint: LumaSemantic.recommend)
-
-                Spacer()
-
-                if store.isLocalScoring {
-                    HStack(spacing: 5) {
-                        ProgressView()
-                            .controlSize(.mini)
-                        Text("本地评估 \(store.localScoringCompleted)/\(store.localScoringTotal)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                }
-
-                if store.isCloudScoring {
-                    HStack(spacing: 5) {
-                        Image(systemName: "sparkles")
-                            .font(.caption2)
-                            .foregroundStyle(LumaSemantic.ai)
-                        Text("AI 评分中 \(store.cloudScoringCompleted)/\(store.cloudScoringTotal)")
-                            .font(.caption.weight(.light))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                }
-
-                if store.importProgress?.phase == .paused {
-                    Text("导入已暂停")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
-                }
-
-                if store.costTracker.totalCost > 0 {
-                    Text(String(format: "已花费 $%.2f", store.costTracker.totalCost))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            }
-
-            if store.isLocalScoring {
-                ProgressView(value: store.localScoringFraction)
-                    .progressViewStyle(.linear)
-                    .frame(height: 3)
-                    .clipShape(Capsule())
-            }
-
-            if store.isCloudScoring {
-                ProgressView(value: store.cloudScoringFraction)
-                    .progressViewStyle(.linear)
-                    .tint(LumaSemantic.ai)
-                    .frame(height: 3)
-                    .clipShape(Capsule())
-            }
-        }
-        .padding(.horizontal, AppSpacing.section)
-        .padding(.vertical, AppSpacing.lg)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
-    }
-
-    private func statusPill(_ title: String, value: Int, tint: Color) -> some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(tint.opacity(0.9))
-                .frame(width: 6, height: 6)
-            Text("\(title) \(value)")
-                .font(.callout.weight(.medium))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
-                .kerning(DesignType.bodyKerning)
-        }
     }
 }

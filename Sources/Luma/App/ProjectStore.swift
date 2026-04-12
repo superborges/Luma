@@ -8,6 +8,32 @@ enum DisplayMode: String {
     case single
 }
 
+enum AppSection: String, CaseIterable, Identifiable {
+    case library
+    case imports
+    case culling
+    case editing
+    case export
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .library:
+            return "图库"
+        case .imports:
+            return "导入"
+        case .culling:
+            return "筛选"
+        case .editing:
+            return "编辑"
+        case .export:
+            return "导出"
+        }
+    }
+
+}
+
 extension DisplayMode {
     var title: String {
         switch self {
@@ -17,6 +43,16 @@ extension DisplayMode {
             return "单页"
         }
     }
+}
+
+enum ExpeditionsGalleryLayout: String, CaseIterable, Sendable, Hashable {
+    case grid
+    case list
+}
+
+enum ProjectLibraryKind: Equatable, Sendable, Hashable {
+    case management
+    case allExpeditionsGallery(layout: ExpeditionsGalleryLayout)
 }
 
 struct BurstDisplayGroup: Identifiable {
@@ -62,17 +98,61 @@ final class ProjectStore {
     private let batchSchedulerFactory: @Sendable () -> any BatchScheduling
 
     var currentProjectDirectory: URL?
-    var projectName: String = "Luma"
-    var createdAt: Date?
+    /// All expeditions known in-memory (typically the active project directory’s expedition).
+    var expeditions: [Expedition] = []
+    var activeExpeditionID: UUID?
     /// Stable identifier for the current project manifest.
     /// Set from the loaded manifest and reused on every save so the id never drifts.
-    private var currentManifestID: UUID = UUID()
+    /// Exposed for UI snapshot tooling in the same module; set from manifest on load.
+    var currentManifestID: UUID = UUID()
     var projectSummaries: [ProjectSummary] = []
-    var assets: [MediaAsset] = [] {
-        didSet { invalidateDerivedState() }
+
+    private var activeExpeditionIndex: Int? {
+        guard let activeExpeditionID else { return nil }
+        return expeditions.firstIndex { $0.id == activeExpeditionID }
     }
-    var groups: [PhotoGroup] = [] {
-        didSet { invalidateDerivedState() }
+
+    var currentExpedition: Expedition? {
+        guard let i = activeExpeditionIndex else { return nil }
+        return expeditions[i]
+    }
+
+    var projectName: String {
+        get { currentExpedition?.name ?? "Luma" }
+        set {
+            guard let i = activeExpeditionIndex else { return }
+            expeditions[i].name = newValue
+            expeditions[i].updatedAt = .now
+        }
+    }
+
+    var createdAt: Date? {
+        get { currentExpedition?.createdAt }
+        set {
+            guard let i = activeExpeditionIndex, let newValue else { return }
+            expeditions[i].createdAt = newValue
+            expeditions[i].updatedAt = .now
+        }
+    }
+
+    var assets: [MediaAsset] {
+        get { currentExpedition?.assets ?? [] }
+        set {
+            guard let i = activeExpeditionIndex else { return }
+            expeditions[i].assets = newValue
+            expeditions[i].updatedAt = .now
+            invalidateDerivedState()
+        }
+    }
+
+    var groups: [PhotoGroup] {
+        get { currentExpedition?.groups ?? [] }
+        set {
+            guard let i = activeExpeditionIndex else { return }
+            expeditions[i].groups = newValue
+            expeditions[i].updatedAt = .now
+            invalidateDerivedState()
+        }
     }
     var selectedGroupID: UUID? {
         didSet { invalidateSelectionDerivedState() }
@@ -81,10 +161,11 @@ final class ProjectStore {
         didSet { invalidateSelectionDerivedState() }
     }
     var pendingImportPrompt: PendingImportPrompt?
-    var recoverableImportSession: ImportSessionRecord?
+    var recoverableImportSession: ImportSession?
     var importProgress: ImportProgress?
     var isImporting = false
     var displayMode: DisplayMode = .grid
+    var currentSection: AppSection = .library
     var lastErrorMessage: String? {
         didSet {
             guard let lastErrorMessage, lastErrorMessage != oldValue else { return }
@@ -109,6 +190,7 @@ final class ProjectStore {
     var aiBudgetLimit: Double = 5.0
     var exportOptions: ExportOptions = .default
     var isProjectLibraryPresented = false
+    var projectLibraryKind: ProjectLibraryKind = .management
     var isPerformanceDiagnosticsPresented = false
     var isExportPanelPresented = false
     var isExporting = false
@@ -181,6 +263,85 @@ final class ProjectStore {
         ensureDerivedState()
         guard let selectedGroupID else { return nil }
         return groupLookupCache[selectedGroupID]
+    }
+
+    var expeditionImportSessions: [ImportSession] {
+        currentExpedition?.importSessions ?? []
+    }
+
+    var importsHubSubtitle: String {
+        guard let exp = currentExpedition else { return "尚未创建导入会话" }
+        if let last = exp.importSessions.last {
+            return "\(exp.name) · \(last.source.displayName)"
+        }
+        return "\(exp.name) · 尚未有导入记录"
+    }
+
+    var scoredCount: Int {
+        assets.filter { $0.aiScore != nil }.count
+    }
+
+    var cullProcessedCount: Int {
+        assets.filter { $0.userDecision != .pending }.count
+    }
+
+    var currentPipelineStages: [SessionStageState] {
+        let totalAssets = max(assets.count, 1)
+        let ingestProgress: Double
+        let ingestStatus: SessionStageStatus
+        if let progress = importProgress, isImporting || progress.phase == .paused {
+            ingestProgress = min(1, Double(progress.completed) / Double(max(progress.total, 1)))
+            ingestStatus = progress.phase == .paused ? .failed : .running
+        } else if assets.isEmpty {
+            ingestProgress = 0
+            ingestStatus = .pending
+        } else {
+            ingestProgress = 1
+            ingestStatus = .completed
+        }
+
+        let groupingProgress = groups.isEmpty ? (assets.isEmpty ? 0.0 : 0.35) : 1.0
+        let groupingStatus: SessionStageStatus = groups.isEmpty
+            ? (assets.isEmpty ? .pending : .running)
+            : .completed
+
+        let scoreProgress = assets.isEmpty ? 0 : Double(scoredCount) / Double(totalAssets)
+        let scoreStatus: SessionStageStatus
+        if isLocalScoring || isCloudScoring {
+            scoreStatus = .running
+        } else if scoredCount > 0, scoredCount == assets.count {
+            scoreStatus = .completed
+        } else {
+            scoreStatus = .pending
+        }
+
+        let cullProgress = assets.isEmpty ? 0 : Double(cullProcessedCount) / Double(totalAssets)
+        let cullStatus: SessionStageStatus
+        if cullProcessedCount > 0, cullProcessedCount == assets.count {
+            cullStatus = .completed
+        } else if cullProcessedCount > 0 {
+            cullStatus = .running
+        } else {
+            cullStatus = .pending
+        }
+
+        let exportStatus: SessionStageStatus
+        if isExporting {
+            exportStatus = .running
+        } else if lastExportSummary != nil {
+            exportStatus = .completed
+        } else {
+            exportStatus = .pending
+        }
+
+        return [
+            .init(stage: .ingest, status: ingestStatus, progress: ingestProgress),
+            .init(stage: .group, status: groupingStatus, progress: groupingProgress),
+            .init(stage: .score, status: scoreStatus, progress: scoreProgress),
+            .init(stage: .cull, status: cullStatus, progress: cullProgress),
+            .init(stage: .editing, status: .pending, progress: 0),
+            .init(stage: .export, status: exportStatus, progress: exportStatus == .completed ? 1 : 0),
+        ]
     }
 
     var visibleBurstGroups: [BurstDisplayGroup] {
@@ -301,7 +462,8 @@ final class ProjectStore {
             recoverableImportSession = session
             do {
                 let manifest = try importManager.loadManifest(for: session)
-                apply(manifest: manifest, in: session.projectDirectory)
+                guard let projectDirectory = session.projectDirectory else { return }
+                apply(manifest: manifest, in: projectDirectory)
                 importProgress = progress(for: session)
             } catch {
                 logger.error("Failed to load recoverable session: \(error.localizedDescription, privacy: .public)")
@@ -332,7 +494,7 @@ final class ProjectStore {
         do {
             guard let projectDirectory = try AppDirectories.projectDirectories().first else { return }
             let data = try Data(contentsOf: AppDirectories.manifestURL(in: projectDirectory))
-            let manifest = try JSONDecoder.lumaDecoder.decode(ProjectManifest.self, from: data)
+            let manifest = try JSONDecoder.lumaDecoder.decode(ExpeditionManifest.self, from: data)
             apply(manifest: manifest, in: projectDirectory)
             triggerLocalScoringIfNeeded()
             logger.log("Loaded project \(manifest.name, privacy: .public)")
@@ -378,12 +540,21 @@ final class ProjectStore {
     }
 
     func openProjectLibrary() {
+        projectLibraryKind = .management
+        refreshProjectSummaries()
+        isProjectLibraryPresented = true
+    }
+
+    /// Full-screen gallery from Library hub (Stitch: “Luma - All Expeditions Gallery”).
+    func openAllExpeditionsGallery(layout: ExpeditionsGalleryLayout) {
+        projectLibraryKind = .allExpeditionsGallery(layout: layout)
         refreshProjectSummaries()
         isProjectLibraryPresented = true
     }
 
     func closeProjectLibrary() {
         isProjectLibraryPresented = false
+        projectLibraryKind = .management
     }
 
     func openPerformanceDiagnostics() {
@@ -404,6 +575,7 @@ final class ProjectStore {
             refreshProjectSummaries()
             triggerLocalScoringIfNeeded()
             isProjectLibraryPresented = false
+            projectLibraryKind = .management
             traceMetric(
                 "project_opened",
                 category: "project",
@@ -437,7 +609,8 @@ final class ProjectStore {
                 clearCurrentProject()
             }
 
-            if urlsReferToSameLocation(recoverableImportSession?.projectDirectory, summary.directory) {
+            if let dir = recoverableImportSession?.projectDirectory,
+               urlsReferToSameLocation(dir, summary.directory) {
                 recoverableImportSession = nil
                 importProgress = nil
             }
@@ -774,6 +947,26 @@ final class ProjectStore {
             let archiveSuffix = archiveSummary.map { "；\($0)" } ?? ""
             lastExportSummary = "导出 \(result.exportedCount) 张到 \(result.destinationDescription)\(archiveSuffix)"
             cloudScoringStatus = lastExportSummary
+
+            if let idx = activeExpeditionIndex {
+                let pickedIDs = assets.filter { $0.userDecision == .picked }.map(\.id)
+                let job = ExportJob(
+                    id: UUID(),
+                    createdAt: Date(),
+                    completedAt: .now,
+                    status: .completed,
+                    options: exportOptions,
+                    targetAssetIDs: pickedIDs,
+                    exportedCount: result.exportedCount,
+                    totalCount: max(pickedAssetsCount, 1),
+                    speedBytesPerSecond: nil,
+                    estimatedSecondsRemaining: nil,
+                    destinationDescription: result.destinationDescription,
+                    lastError: nil
+                )
+                expeditions[idx].exportJobs.append(job)
+                expeditions[idx].updatedAt = .now
+            }
             traceMetric(
                 "export_completed",
                 category: "export",
@@ -1046,7 +1239,7 @@ final class ProjectStore {
         }
     }
 
-    private func continueImport(_ session: ImportSessionRecord) async {
+    private func continueImport(_ session: ImportSession) async {
         await runImportOperation { progress, snapshot in
             try await self.importManager.resumeImport(session: session, progress: progress, snapshot: snapshot)
         }
@@ -1100,7 +1293,7 @@ final class ProjectStore {
         pendingImportPrompt = importPromptQueue.removeFirst()
     }
 
-    private func progress(for session: ImportSessionRecord) -> ImportProgress {
+    private func progress(for session: ImportSession) -> ImportProgress {
         switch session.phase {
         case .scanning:
             return .init(phase: .scanning, completed: 0, total: max(session.totalItems, 1), currentItemName: session.source.displayName)
@@ -1118,13 +1311,30 @@ final class ProjectStore {
         }
     }
 
-    private func apply(manifest: ProjectManifest, in directory: URL) {
+    private func apply(manifest: ExpeditionManifest, in directory: URL) {
         currentProjectDirectory = directory
         currentManifestID = manifest.id
-        projectName = manifest.name
-        createdAt = manifest.createdAt
-        assets = manifest.assets.sorted { $0.metadata.captureDate < $1.metadata.captureDate }
-        groups = manifest.groups
+        var expedition = manifest.expedition
+        if expedition.id != manifest.id {
+            expedition = Expedition(
+                id: manifest.id,
+                name: expedition.name,
+                createdAt: expedition.createdAt,
+                updatedAt: .now,
+                location: expedition.location,
+                tags: expedition.tags,
+                coverAssetID: expedition.coverAssetID,
+                assets: expedition.assets,
+                groups: expedition.groups,
+                importSessions: expedition.importSessions,
+                editingSessions: expedition.editingSessions,
+                exportJobs: expedition.exportJobs
+            )
+        }
+        expedition.assets = expedition.assets.sorted { $0.metadata.captureDate < $1.metadata.captureDate }
+        expedition.updatedAt = .now
+        expeditions = [expedition]
+        activeExpeditionID = expedition.id
         selectedGroupID = nil
         selectedAssetID = assets.first?.id
         displayMode = .grid
@@ -1139,10 +1349,8 @@ final class ProjectStore {
     private func clearCurrentProject() {
         currentProjectDirectory = nil
         currentManifestID = UUID()
-        projectName = "Luma"
-        createdAt = nil
-        assets = []
-        groups = []
+        expeditions = []
+        activeExpeditionID = nil
         selectedGroupID = nil
         selectedAssetID = nil
         displayMode = .grid
@@ -1199,9 +1407,9 @@ final class ProjectStore {
         return group.name.range(of: pattern, options: .regularExpression) != nil
     }
 
-    private func loadManifest(at directory: URL) throws -> ProjectManifest {
+    private func loadManifest(at directory: URL) throws -> ExpeditionManifest {
         let data = try Data(contentsOf: AppDirectories.manifestURL(in: directory))
-        return try JSONDecoder.lumaDecoder.decode(ProjectManifest.self, from: data)
+        return try JSONDecoder.lumaDecoder.decode(ExpeditionManifest.self, from: data)
     }
 
     private func scheduleRelevantCachePreparation() {
@@ -1257,13 +1465,9 @@ final class ProjectStore {
         guard let currentProjectDirectory else { return }
         manifestSaveTask?.cancel()
 
-        let manifest = ProjectManifest(
-            id: currentManifestID,
-            name: projectName,
-            createdAt: createdAt ?? .now,
-            assets: assets,
-            groups: groups
-        )
+        guard let i = activeExpeditionIndex else { return }
+        expeditions[i].updatedAt = .now
+        let manifest = ExpeditionManifest(id: currentManifestID, expedition: expeditions[i])
         let manifestURL = AppDirectories.manifestURL(in: currentProjectDirectory)
 
         manifestSaveTask = Task { [manifestURL, manifest] in
