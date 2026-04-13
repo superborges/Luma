@@ -211,7 +211,7 @@ struct LibraryHubView: View {
                     .tracking(StitchTypography.sectionHeadingTracking)
                 Spacer(minLength: 8)
                 LibraryViewAllLink(title: "View All") {
-                    store.openAllExpeditionsGallery(layout: .list)
+                    store.openAllExpeditionsGallery(layout: .grid)
                 }
             }
 

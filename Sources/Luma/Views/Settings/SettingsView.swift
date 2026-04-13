@@ -16,7 +16,7 @@ struct SettingsView: View {
                     if let path = try? AppDirectories.applicationSupportRoot().path(percentEncoded: false) {
                         LabeledContent("数据目录", value: path)
                     }
-                    Button("打开项目库") {
+                    Button("打开远征库") {
                         store.openProjectLibrary()
                     }
                     .stitchHoverDimming()

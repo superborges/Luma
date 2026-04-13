@@ -10,7 +10,7 @@ struct ContentView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SideNavBar(currentSection: $store.currentSection)
+            SideNavBar(currentSection: navSectionBinding)
             sectionContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -86,11 +86,29 @@ struct ContentView: View {
         )
     }
 
+    /// Re-tapping **Library** while the full-window gallery is open returns to the Library hub.
+    private var navSectionBinding: Binding<AppSection> {
+        Binding(
+            get: { store.currentSection },
+            set: { newValue in
+                if newValue == .library, store.currentSection == .library, store.isShowingAllExpeditionsGallery {
+                    store.closeAllExpeditionsGallery()
+                    return
+                }
+                store.currentSection = newValue
+            }
+        )
+    }
+
     @ViewBuilder
     private var sectionContent: some View {
         switch store.currentSection {
         case .library:
-            LibraryHubView(store: store)
+            if store.isShowingAllExpeditionsGallery {
+                AllExpeditionsGalleryView(store: store)
+            } else {
+                LibraryHubView(store: store)
+            }
         case .imports:
             ImportsHubView(store: store)
         case .culling:

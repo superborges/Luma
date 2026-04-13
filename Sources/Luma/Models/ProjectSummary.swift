@@ -30,4 +30,10 @@ struct ProjectSummary: Identifiable, Hashable {
             return "Manifest 异常"
         }
     }
+
+    /// Whether the expedition can be opened in the main workspace (Culling).
+    var isOpenable: Bool {
+        if case .ready = state { return true }
+        return false
+    }
 }

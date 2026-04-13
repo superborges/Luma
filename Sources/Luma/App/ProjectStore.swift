@@ -50,11 +50,6 @@ enum ExpeditionsGalleryLayout: String, CaseIterable, Sendable, Hashable {
     case list
 }
 
-enum ProjectLibraryKind: Equatable, Sendable, Hashable {
-    case management
-    case allExpeditionsGallery(layout: ExpeditionsGalleryLayout)
-}
-
 struct BurstDisplayGroup: Identifiable {
     let id: UUID
     let assets: [MediaAsset]
@@ -165,7 +160,13 @@ final class ProjectStore {
     var importProgress: ImportProgress?
     var isImporting = false
     var displayMode: DisplayMode = .grid
-    var currentSection: AppSection = .library
+    var currentSection: AppSection = .library {
+        didSet {
+            if currentSection != .library {
+                isShowingAllExpeditionsGallery = false
+            }
+        }
+    }
     var lastErrorMessage: String? {
         didSet {
             guard let lastErrorMessage, lastErrorMessage != oldValue else { return }
@@ -190,7 +191,9 @@ final class ProjectStore {
     var aiBudgetLimit: Double = 5.0
     var exportOptions: ExportOptions = .default
     var isProjectLibraryPresented = false
-    var projectLibraryKind: ProjectLibraryKind = .management
+    /// Full-window **Luma - All Expeditions Gallery** (main column, Library section); not a sheet.
+    var isShowingAllExpeditionsGallery = false
+    var allExpeditionsGalleryLayout: ExpeditionsGalleryLayout = .grid
     var isPerformanceDiagnosticsPresented = false
     var isExportPanelPresented = false
     var isExporting = false
@@ -540,21 +543,24 @@ final class ProjectStore {
     }
 
     func openProjectLibrary() {
-        projectLibraryKind = .management
         refreshProjectSummaries()
         isProjectLibraryPresented = true
     }
 
-    /// Full-screen gallery from Library hub (Stitch: “Luma - All Expeditions Gallery”).
+    /// Main-window gallery from Library hub (not `ProjectLibraryView` sheet).
     func openAllExpeditionsGallery(layout: ExpeditionsGalleryLayout) {
-        projectLibraryKind = .allExpeditionsGallery(layout: layout)
+        currentSection = .library
+        allExpeditionsGalleryLayout = layout
+        isShowingAllExpeditionsGallery = true
         refreshProjectSummaries()
-        isProjectLibraryPresented = true
+    }
+
+    func closeAllExpeditionsGallery() {
+        isShowingAllExpeditionsGallery = false
     }
 
     func closeProjectLibrary() {
         isProjectLibraryPresented = false
-        projectLibraryKind = .management
     }
 
     func openPerformanceDiagnostics() {
@@ -575,7 +581,7 @@ final class ProjectStore {
             refreshProjectSummaries()
             triggerLocalScoringIfNeeded()
             isProjectLibraryPresented = false
-            projectLibraryKind = .management
+            isShowingAllExpeditionsGallery = false
             traceMetric(
                 "project_opened",
                 category: "project",
