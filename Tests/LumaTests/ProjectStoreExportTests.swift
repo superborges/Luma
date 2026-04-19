@@ -78,7 +78,7 @@ final class ProjectStoreExportTests: XCTestCase {
             XCTAssertFalse(store.isExporting)
             XCTAssertFalse(store.isExportPanelPresented)
             XCTAssertEqual(store.lastExportSummary, "导出 1 张到 \(outputRoot.path)；未选 1 张未处理")
-            XCTAssertEqual(store.cloudScoringStatus, store.lastExportSummary)
+            XCTAssertEqual(store.lastSummaryStatus, store.lastExportSummary)
             XCTAssertTrue(FileManager.default.fileExists(atPath: exportedFolder.appendingPathComponent("IMG_5002.JPG").path))
             XCTAssertTrue(FileManager.default.fileExists(atPath: exportedFolder.appendingPathComponent("IMG_5002.xmp").path))
             XCTAssertFalse(FileManager.default.fileExists(atPath: exportedFolder.appendingPathComponent("IMG_5003.JPG").path))

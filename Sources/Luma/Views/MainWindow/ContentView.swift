@@ -86,17 +86,10 @@ struct ContentView: View {
         )
     }
 
-    /// Re-tapping **Library** while the full-window gallery is open returns to the Library hub.
     private var navSectionBinding: Binding<AppSection> {
         Binding(
             get: { store.currentSection },
-            set: { newValue in
-                if newValue == .library, store.currentSection == .library, store.isShowingAllExpeditionsGallery {
-                    store.closeAllExpeditionsGallery()
-                    return
-                }
-                store.currentSection = newValue
-            }
+            set: { store.currentSection = $0 }
         )
     }
 
@@ -104,17 +97,11 @@ struct ContentView: View {
     private var sectionContent: some View {
         switch store.currentSection {
         case .library:
-            if store.isShowingAllExpeditionsGallery {
-                AllExpeditionsGalleryView(store: store)
-            } else {
-                LibraryHubView(store: store)
-            }
+            SessionListView(store: store)
         case .imports:
             ImportsHubView(store: store)
         case .culling:
             CullingHubView(store: store)
-        case .editing:
-            EditingHubView()
         case .export:
             ExportHubView(store: store)
         }

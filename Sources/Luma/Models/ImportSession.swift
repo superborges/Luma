@@ -4,6 +4,9 @@ enum ImportSourceDescriptor: Codable, Hashable, Identifiable {
     case folder(path: String, displayName: String)
     case sdCard(volumePath: String, displayName: String)
     case iPhone(deviceID: String, deviceName: String)
+    /// Mac · 照片 App。`albumLocalIdentifier` 为 nil 时表示读取整库（按 limit 取最近 N 张）。
+    /// 仅读取本地已缓存版本，不触发 iCloud 下载。
+    case photosLibrary(albumLocalIdentifier: String?, limit: Int, displayName: String)
 
     var id: String {
         stableID
@@ -17,6 +20,8 @@ enum ImportSourceDescriptor: Codable, Hashable, Identifiable {
             return "sd:\(volumePath)"
         case .iPhone(let deviceID, _):
             return "iphone:\(deviceID)"
+        case .photosLibrary(let albumLocalIdentifier, let limit, _):
+            return "photos:\(albumLocalIdentifier ?? "all"):\(limit)"
         }
     }
 
@@ -28,6 +33,8 @@ enum ImportSourceDescriptor: Codable, Hashable, Identifiable {
             return displayName
         case .iPhone(_, let deviceName):
             return deviceName
+        case .photosLibrary(_, _, let displayName):
+            return displayName
         }
     }
 
@@ -43,6 +50,10 @@ enum ImportSourceDescriptor: Codable, Hashable, Identifiable {
             return .sdCard(volumePath: volumePath)
         case .iPhone(let deviceID, _):
             return .iPhone(deviceID: deviceID)
+        case .photosLibrary:
+            // photosLibrary 源里每张资产的 source 由 adapter 在 enumerate 时按 PHAsset.localIdentifier 单独构造。
+            // 这里返回一个占位值；不应被实际使用。
+            return .photosLibrary(localIdentifier: "")
         }
     }
 }

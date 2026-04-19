@@ -27,7 +27,32 @@ struct PhotosAppExporter: ExportDestinationAdapter {
             group.assets.map { ($0, group.id) }
         })
 
-        let plannedAssets = pickedAssets.compactMap { asset -> PlannedAsset? in
+        // iCloud 闭环关键：source = .photosLibrary 的资产已在系统照片库里，按 localIdentifier 直接引用，
+        // 避免 PHAssetCreationRequest 重复入库导致照片库里出现两份相同照片。
+        var existingPHAssetByAssetID: [UUID: PHAsset] = [:]
+        var newSourceAssets: [MediaAsset] = []
+        var photosIdentifiers: [String] = []
+        var assetIDByPhotosIdentifier: [String: UUID] = [:]
+
+        for asset in pickedAssets {
+            if case .photosLibrary(let identifier) = asset.source, !identifier.isEmpty {
+                photosIdentifiers.append(identifier)
+                assetIDByPhotosIdentifier[identifier] = asset.id
+            } else {
+                newSourceAssets.append(asset)
+            }
+        }
+
+        if !photosIdentifiers.isEmpty {
+            let fetched = PHAsset.fetchAssets(withLocalIdentifiers: photosIdentifiers, options: nil)
+            fetched.enumerateObjects { phAsset, _, _ in
+                if let assetID = assetIDByPhotosIdentifier[phAsset.localIdentifier] {
+                    existingPHAssetByAssetID[assetID] = phAsset
+                }
+            }
+        }
+
+        let plannedAssets = newSourceAssets.compactMap { asset -> PlannedAsset? in
             guard let stillPhoto = stillPhotoURL(for: asset, options: options) else {
                 return nil
             }
@@ -48,7 +73,8 @@ struct PhotosAppExporter: ExportDestinationAdapter {
             )
         }
 
-        guard !plannedAssets.isEmpty else {
+        let totalToProcess = plannedAssets.count + existingPHAssetByAssetID.count
+        guard totalToProcess > 0 else {
             throw LumaError.unsupported("当前 Picked 素材里没有可写入照片 App 的源文件。")
         }
 
@@ -79,27 +105,33 @@ struct PhotosAppExporter: ExportDestinationAdapter {
             guard options.createAlbumPerGroup else { return }
 
             for group in groups {
-                let placeholders = plannedAssets
-                    .filter { $0.groupID == group.id }
-                    .compactMap { placeholdersByAssetID[$0.id] }
+                let memberRefs: [Any] = group.assets.compactMap { assetID -> Any? in
+                    if let phAsset = existingPHAssetByAssetID[assetID] {
+                        return phAsset
+                    }
+                    if let placeholder = placeholdersByAssetID[assetID] {
+                        return placeholder
+                    }
+                    return nil
+                }
 
-                guard !placeholders.isEmpty else { continue }
+                guard !memberRefs.isEmpty else { continue }
 
                 if let existingAlbum = existingAlbumsByGroupID[group.id] {
                     let changeRequest = PHAssetCollectionChangeRequest(for: existingAlbum)
-                    changeRequest?.addAssets(placeholders as NSArray)
+                    changeRequest?.addAssets(memberRefs as NSArray)
                 } else {
                     let collectionRequest = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(
                         withTitle: sanitizedAlbumTitle(for: group)
                     )
-                    collectionRequest.addAssets(placeholders as NSArray)
+                    collectionRequest.addAssets(memberRefs as NSArray)
                 }
             }
         }
 
         return ExportResult(
-            exportedCount: plannedAssets.count,
-            skippedCount: max(0, pickedAssets.count - plannedAssets.count),
+            exportedCount: totalToProcess,
+            skippedCount: max(0, pickedAssets.count - totalToProcess),
             destinationDescription: displayName
         )
     }

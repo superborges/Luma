@@ -311,25 +311,4 @@ enum TestFixtures {
         store.currentManifestID = id
     }
 
-    static func makeModelConfig(
-        name: String = "Mock Model",
-        apiProtocol: APIProtocol = .openAICompatible,
-        inputCost: Double? = nil,
-        outputCost: Double? = nil
-    ) -> ModelConfig {
-        ModelConfig(
-            id: UUID(),
-            name: name,
-            apiProtocol: apiProtocol,
-            endpoint: "http://localhost:11434/v1",
-            apiKeyReference: nil,
-            modelId: "mock-model",
-            isActive: true,
-            role: .primary,
-            maxConcurrency: 2,
-            costPerInputToken: inputCost,
-            costPerOutputToken: outputCost,
-            calibrationOffset: 0
-        )
-    }
 }

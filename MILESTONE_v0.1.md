@@ -51,17 +51,13 @@
 达到下面这些，才算 `v0.1`：
 
 1. 真实目录 `/Users/qinkan/Documents/100LEICA` 能稳定完成：
-   - 导入
-   - 分组
-   - 挑片
-   - 导出 / 归档
-
+  - 导入
+  - 分组
+  - 挑片
+  - 导出 / 归档
 2. BurstSet 在当前已标注样本上，没有明显系统性误并 / 漏并。
-
 3. 主交互卡顿可被 trace 定位，且 `Artifacts/trace-summary-latest.md` 能直接看出热点。
-
 4. `swift build` 稳定通过；测试至少保持编译通过，环境允许时可跑完整回归。
-
 5. 已知问题被压到“可进入内测”，而不是“主链路会断”。
 
 ## Release Gate
@@ -79,14 +75,16 @@
 
 **日期**：2026-04-11  
 
-| 项 | 证据 |
-| --- | --- |
-| 导入 | 负责人工验收；真实目录 E2E `100LEICA`、`luma_test_1` 均通过 |
-| 分组 | 同上 + 手测侧栏分组 UI（点击与分隔线修复后复验） |
-| Burst / strip | 人工验收 |
-| 挑片快捷键 | 人工验收 |
-| 导出 | 人工验收；E2E 覆盖导出 / `shrinkKeep` / `archive video` |
+
+| 项             | 证据                                                                               |
+| ------------- | -------------------------------------------------------------------------------- |
+| 导入            | 负责人工验收；真实目录 E2E `100LEICA`、`luma_test_1` 均通过                                     |
+| 分组            | 同上 + 手测侧栏分组 UI（点击与分隔线修复后复验）                                                      |
+| Burst / strip | 人工验收                                                                             |
+| 挑片快捷键         | 人工验收                                                                             |
+| 导出            | 人工验收；E2E 覆盖导出 / `shrinkKeep` / `archive video`                                   |
 | trace summary | 人工验收；`TraceSummaryCLITests` 通过；热点见既有 `Artifacts/trace-summary-latest.md`（若本地已生成） |
+
 
 **本轮自动化**：`swift test` — 60 passed，2 skipped（RealFolder 未设 env 时跳过）；`scripts/run_real_folder_e2e.sh` 对上述两目录各 2/2 通过。
 

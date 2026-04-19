@@ -5,7 +5,7 @@ After **any** code change that affects the macOS app, the agent must **build and
 
 **User preference:** 改完后要**重启应用**再看效果——若 Luma 已在运行，先退出再打开新构建（或结束旧进程后再启动），避免仍停留在旧实例上看不到 UI 变更。
 
-UI 改动对话以 **`Artifacts/ui-regions.md`** 里的点分代号为准（例：`main.workspace.burst.chip`）；间距/圆角优先用 **`Sources/Luma/Design/AppMetrics.swift`** 的 `AppSpacing` / `AppRadius`，避免各说各话。
+UI 改动对话以 `**Artifacts/ui-regions.md`** 里的点分代号为准（例：`main.workspace.burst.chip`）；间距/圆角优先用 `**Sources/Luma/Design/AppMetrics.swift**` 的 `AppSpacing` / `AppRadius`，避免各说各话。
 
 Keep your text output brief and direct. Lead with the answer or action, not the reasoning. Skip filler words, preamble, and unnecessary transitions. Do not restate what the user said — just do it. When explaining, include only what is necessary for the user to understand.
 

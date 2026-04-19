@@ -12,7 +12,6 @@ enum AppSection: String, CaseIterable, Identifiable {
     case library
     case imports
     case culling
-    case editing
     case export
 
     var id: String { rawValue }
@@ -20,13 +19,11 @@ enum AppSection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .library:
-            return "图库"
+            return "Sessions"
         case .imports:
             return "导入"
         case .culling:
             return "筛选"
-        case .editing:
-            return "编辑"
         case .export:
             return "导出"
         }
@@ -43,11 +40,6 @@ extension DisplayMode {
             return "单页"
         }
     }
-}
-
-enum ExpeditionsGalleryLayout: String, CaseIterable, Sendable, Hashable {
-    case grid
-    case list
 }
 
 struct BurstDisplayGroup: Identifiable {
@@ -89,8 +81,6 @@ final class ProjectStore {
     private let localMLScorer = LocalMLScorer()
     private let videoArchiver = VideoArchiver()
     private let enableImportMonitoring: Bool
-    private let visionProviderFactory: @Sendable (ModelConfig) -> any VisionModelProvider
-    private let batchSchedulerFactory: @Sendable () -> any BatchScheduling
 
     var currentProjectDirectory: URL?
     /// All expeditions known in-memory (typically the active project directory’s expedition).
@@ -160,13 +150,7 @@ final class ProjectStore {
     var importProgress: ImportProgress?
     var isImporting = false
     var displayMode: DisplayMode = .grid
-    var currentSection: AppSection = .library {
-        didSet {
-            if currentSection != .library {
-                isShowingAllExpeditionsGallery = false
-            }
-        }
-    }
+    var currentSection: AppSection = .library
     var lastErrorMessage: String? {
         didSet {
             guard let lastErrorMessage, lastErrorMessage != oldValue else { return }
@@ -177,23 +161,13 @@ final class ProjectStore {
             )
         }
     }
-    var modelConfigs: [ModelConfig] = []
-    var costTracker = CostTracker()
     var isLocalScoring = false
     var localScoringCompleted = 0
     var localScoringTotal = 0
     var localRejectedCount = 0
-    var isCloudScoring = false
-    var cloudScoringCompleted = 0
-    var cloudScoringTotal = 0
-    var cloudScoringStatus: String?
-    var aiScoringStrategy: AIScoringStrategy = .budget
-    var aiBudgetLimit: Double = 5.0
+    var lastSummaryStatus: String?
     var exportOptions: ExportOptions = .default
     var isProjectLibraryPresented = false
-    /// Full-window **Luma - All Expeditions Gallery** (main column, Library section); not a sheet.
-    var isShowingAllExpeditionsGallery = false
-    var allExpeditionsGalleryLayout: ExpeditionsGalleryLayout = .grid
     var isPerformanceDiagnosticsPresented = false
     var isExportPanelPresented = false
     var isExporting = false
@@ -218,20 +192,10 @@ final class ProjectStore {
     private var cachePreparationTask: Task<Void, Never>?
     private var selectedDisplayWarmupTask: Task<Void, Never>?
     private var groupNameRefreshTask: Task<Void, Never>?
-    private let modelConfigsDefaultsKey = "Luma.modelConfigs"
-    private let aiStrategyDefaultsKey = "Luma.aiScoringStrategy"
-    private let aiBudgetDefaultsKey = "Luma.aiBudgetLimit"
     private let exportOptionsDefaultsKey = "Luma.exportOptions"
 
-    init(
-        enableImportMonitoring: Bool = true,
-        visionProviderFactory: @escaping @Sendable (ModelConfig) -> any VisionModelProvider = VisionProviderFactory.makeProvider,
-        batchSchedulerFactory: @escaping @Sendable () -> any BatchScheduling = { BatchScheduler() }
-    ) {
+    init(enableImportMonitoring: Bool = true) {
         self.enableImportMonitoring = enableImportMonitoring
-        self.visionProviderFactory = visionProviderFactory
-        self.batchSchedulerFactory = batchSchedulerFactory
-        loadAISettings()
         loadExportSettings()
     }
 
@@ -310,7 +274,7 @@ final class ProjectStore {
 
         let scoreProgress = assets.isEmpty ? 0 : Double(scoredCount) / Double(totalAssets)
         let scoreStatus: SessionStageStatus
-        if isLocalScoring || isCloudScoring {
+        if isLocalScoring {
             scoreStatus = .running
         } else if scoredCount > 0, scoredCount == assets.count {
             scoreStatus = .completed
@@ -433,19 +397,6 @@ final class ProjectStore {
         return Double(localScoringCompleted) / Double(localScoringTotal)
     }
 
-    var cloudScoringFraction: Double {
-        guard cloudScoringTotal > 0 else { return 0 }
-        return Double(cloudScoringCompleted) / Double(cloudScoringTotal)
-    }
-
-    var activePrimaryModel: ModelConfig? {
-        modelConfigs.first { $0.isActive && $0.role == .primary }
-    }
-
-    var activePremiumModel: ModelConfig? {
-        modelConfigs.first { $0.isActive && $0.role == .premiumFallback }
-    }
-
     var pickedAssetsCount: Int {
         assets.filter { $0.userDecision == .picked }.count
     }
@@ -542,21 +493,16 @@ final class ProjectStore {
         }
     }
 
+    func importPhotosLibrary() async {
+        traceEvent("import_requested", category: "import", metadata: ["source": "photos_library"])
+        await runImportOperation { progress, snapshot in
+            try await self.importManager.importPhotosLibrarySelection(progress: progress, snapshot: snapshot)
+        }
+    }
+
     func openProjectLibrary() {
         refreshProjectSummaries()
         isProjectLibraryPresented = true
-    }
-
-    /// Main-window gallery from Library hub (not `ProjectLibraryView` sheet).
-    func openAllExpeditionsGallery(layout: ExpeditionsGalleryLayout) {
-        currentSection = .library
-        allExpeditionsGalleryLayout = layout
-        isShowingAllExpeditionsGallery = true
-        refreshProjectSummaries()
-    }
-
-    func closeAllExpeditionsGallery() {
-        isShowingAllExpeditionsGallery = false
     }
 
     func closeProjectLibrary() {
@@ -581,7 +527,7 @@ final class ProjectStore {
             refreshProjectSummaries()
             triggerLocalScoringIfNeeded()
             isProjectLibraryPresented = false
-            isShowingAllExpeditionsGallery = false
+            currentSection = .culling
             traceMetric(
                 "project_opened",
                 category: "project",
@@ -652,6 +598,7 @@ final class ProjectStore {
                         directory: directory,
                         name: manifest.name,
                         createdAt: manifest.createdAt,
+                        coverImageURL: coverImageURL(from: manifest),
                         state: .ready(assetCount: manifest.assets.count, groupCount: manifest.groups.count),
                         isCurrent: urlsReferToSameLocation(directory, currentProjectDirectory)
                     )
@@ -662,6 +609,7 @@ final class ProjectStore {
                         directory: directory,
                         name: directory.lastPathComponent,
                         createdAt: values?.creationDate ?? .distantPast,
+                        coverImageURL: nil,
                         state: .unavailable(reason: error.localizedDescription),
                         isCurrent: urlsReferToSameLocation(directory, currentProjectDirectory)
                     )
@@ -671,6 +619,15 @@ final class ProjectStore {
             projectSummaries = []
             lastErrorMessage = error.localizedDescription
         }
+    }
+
+    private func coverImageURL(from manifest: ExpeditionManifest) -> URL? {
+        let assets = manifest.assets
+        if let coverID = manifest.expedition.coverAssetID,
+           let cover = assets.first(where: { $0.id == coverID }) {
+            return cover.primaryDisplayURL
+        }
+        return assets.first?.primaryDisplayURL
     }
 
     func resumeRecoverableImport() async {
@@ -874,17 +831,6 @@ final class ProjectStore {
         return overallSummaryCache
     }
 
-    func saveAISettings() {
-        do {
-            let data = try JSONEncoder().encode(modelConfigs)
-            UserDefaults.standard.set(data, forKey: modelConfigsDefaultsKey)
-            UserDefaults.standard.set(aiScoringStrategy.rawValue, forKey: aiStrategyDefaultsKey)
-            UserDefaults.standard.set(aiBudgetLimit, forKey: aiBudgetDefaultsKey)
-        } catch {
-            logger.error("Failed to save AI settings: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
     func openExportPanel() {
         isExportPanelPresented = true
         traceEvent("export_panel_opened", category: "export")
@@ -952,7 +898,7 @@ final class ProjectStore {
 
             let archiveSuffix = archiveSummary.map { "；\($0)" } ?? ""
             lastExportSummary = "导出 \(result.exportedCount) 张到 \(result.destinationDescription)\(archiveSuffix)"
-            cloudScoringStatus = lastExportSummary
+            lastSummaryStatus = lastExportSummary
 
             if let idx = activeExpeditionIndex {
                 let pickedIDs = assets.filter { $0.userDecision == .picked }.map(\.id)
@@ -987,171 +933,6 @@ final class ProjectStore {
         }
 
         isExporting = false
-    }
-
-    func saveModel(
-        id: UUID?,
-        name: String,
-        apiProtocol: APIProtocol,
-        endpoint: String,
-        modelId: String,
-        apiKey: String,
-        isActive: Bool,
-        role: ModelRole,
-        maxConcurrency: Int,
-        costPerInputToken: Double?,
-        costPerOutputToken: Double?
-    ) {
-        let modelID = id ?? UUID()
-        let account = "model-\(modelID.uuidString)"
-
-        if !apiKey.isEmpty {
-            do {
-                try KeychainHelper.save(apiKey, service: "Luma.AIModel", account: account)
-            } catch {
-                lastErrorMessage = error.localizedDescription
-                return
-            }
-        }
-
-        let config = ModelConfig(
-            id: modelID,
-            name: name,
-            apiProtocol: apiProtocol,
-            endpoint: endpoint,
-            apiKeyReference: account,
-            modelId: modelId,
-            isActive: isActive,
-            role: role,
-            maxConcurrency: max(1, maxConcurrency),
-            costPerInputToken: costPerInputToken,
-            costPerOutputToken: costPerOutputToken,
-            calibrationOffset: 0
-        )
-
-        if let index = modelConfigs.firstIndex(where: { $0.id == modelID }) {
-            modelConfigs[index] = config
-        } else {
-            modelConfigs.append(config)
-        }
-
-        modelConfigs.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        saveAISettings()
-    }
-
-    func deleteModel(_ modelID: UUID) {
-        guard let model = modelConfigs.first(where: { $0.id == modelID }) else { return }
-        KeychainHelper.delete(service: "Luma.AIModel", account: model.keychainAccount)
-        modelConfigs.removeAll { $0.id == modelID }
-        saveAISettings()
-    }
-
-    func testModelConnection(_ modelID: UUID) async {
-        guard let model = modelConfigs.first(where: { $0.id == modelID }) else { return }
-        cloudScoringStatus = "正在测试 \(model.name)..."
-
-        do {
-            let provider = visionProviderFactory(model)
-            _ = try await provider.testConnection()
-            cloudScoringStatus = "\(model.name) 连接成功"
-        } catch {
-            cloudScoringStatus = nil
-            lastErrorMessage = error.localizedDescription
-        }
-    }
-
-    func startCloudScoring() async {
-        let startedAt = ProcessInfo.processInfo.systemUptime
-        guard !isCloudScoring else { return }
-        guard !assets.isEmpty else {
-            lastErrorMessage = "当前没有可评分的项目。"
-            return
-        }
-        guard let primaryModel = activePrimaryModel else {
-            lastErrorMessage = "请先在设置中配置并启用一个 Primary AI 模型。"
-            return
-        }
-
-        let primaryProvider = visionProviderFactory(primaryModel)
-        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
-        let groupsSnapshot = groups
-        let premiumModel = activePremiumModel
-        let scheduler = batchSchedulerFactory()
-
-        isCloudScoring = true
-        cloudScoringCompleted = 0
-        cloudScoringTotal = max(1, groups.count)
-        cloudScoringStatus = "准备按组评分..."
-        costTracker.reset()
-        traceEvent(
-            "cloud_scoring_started",
-            category: "ai",
-            metadata: [
-                "group_count": String(groups.count),
-                "strategy": aiScoringStrategy.rawValue,
-                "primary_model": primaryModel.name
-            ]
-        )
-
-        do {
-            let groupResult = try await scheduler.scoreGroups(
-                groupsSnapshot,
-                assetsByID: assetsByID,
-                provider: primaryProvider,
-                modelConfig: primaryModel
-            ) { [weak self] progress in
-                Task { @MainActor in
-                    self?.cloudScoringCompleted = progress.completedGroups
-                    self?.cloudScoringTotal = progress.totalGroups
-                    self?.cloudScoringStatus = "AI 评分中：\(progress.currentGroupName)"
-                }
-            }
-
-            applyGroupScores(groupResult)
-
-            let detailProviderConfig: ModelConfig?
-            switch aiScoringStrategy {
-            case .budget:
-                detailProviderConfig = nil
-            case .balanced, .bestQuality:
-                detailProviderConfig = premiumModel ?? primaryModel
-            }
-
-            if let detailProviderConfig {
-                let detailProvider = visionProviderFactory(detailProviderConfig)
-                let detailCandidates = detailCandidateIDs()
-                let groupsByID = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
-                let detailResult = try await scheduler.analyzeDetails(
-                    assetIDs: detailCandidates,
-                    assetsByID: Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) }),
-                    groupsByID: groupsByID,
-                    provider: detailProvider,
-                    modelConfig: detailProviderConfig
-                )
-                applyDetailedSuggestions(detailResult.0)
-                detailResult.1.forEach { costTracker.record($0) }
-            }
-
-            if costTracker.totalCost > aiBudgetLimit {
-                lastErrorMessage = String(format: "AI 评分已超过预算阈值 $%.2f", aiBudgetLimit)
-            }
-
-            traceMetric(
-                "cloud_scoring_completed",
-                category: "ai",
-                startedAt: startedAt,
-                metadata: [
-                    "group_count": String(groups.count),
-                    "total_cost": String(format: "%.4f", costTracker.totalCost)
-                ]
-            )
-        } catch {
-            lastErrorMessage = error.localizedDescription
-        }
-
-        isCloudScoring = false
-        cloudScoringStatus = nil
-        scheduleManifestSave()
     }
 
     private func runImportOperation(
@@ -1648,23 +1429,6 @@ final class ProjectStore {
         }
     }
 
-    private func loadAISettings() {
-        if let data = UserDefaults.standard.data(forKey: modelConfigsDefaultsKey),
-           let configs = try? JSONDecoder().decode([ModelConfig].self, from: data) {
-            modelConfigs = configs
-        }
-
-        if let rawValue = UserDefaults.standard.string(forKey: aiStrategyDefaultsKey),
-           let strategy = AIScoringStrategy(rawValue: rawValue) {
-            aiScoringStrategy = strategy
-        }
-
-        let budget = UserDefaults.standard.double(forKey: aiBudgetDefaultsKey)
-        if budget > 0 {
-            aiBudgetLimit = budget
-        }
-    }
-
     private func saveExportSettings() {
         do {
             let data = try JSONEncoder().encode(exportOptions)
@@ -1707,49 +1471,6 @@ final class ProjectStore {
             let batchName = "\(projectName)_\(ISO8601DateFormatter().string(from: .now))"
             let result = try await videoArchiver.shrinkKeep(assets: archiveCandidates, batchName: batchName)
             return "缩小归档 \(result.generatedFiles.count) 张到 \(result.outputDirectory.lastPathComponent)"
-        }
-    }
-
-    private func applyGroupScores(_ result: BatchSchedulerResult) {
-        for (assetID, score) in result.scoresByAssetID {
-            guard let index = assets.firstIndex(where: { $0.id == assetID }) else { continue }
-            assets[index].aiScore = score
-        }
-
-        for (groupID, comment) in result.groupCommentsByID {
-            guard let index = groups.firstIndex(where: { $0.id == groupID }) else { continue }
-            groups[index].groupComment = comment.isEmpty ? nil : comment
-        }
-
-        for (groupID, recommendedAssets) in result.recommendedByGroupID {
-            guard let index = groups.firstIndex(where: { $0.id == groupID }) else { continue }
-            groups[index].recommendedAssets = recommendedAssets
-        }
-
-        result.costRecords.forEach { costTracker.record($0) }
-        refreshGroupRecommendations()
-    }
-
-    private func detailCandidateIDs() -> [UUID] {
-        let scoredAssets = assets
-            .filter { !$0.isTechnicallyRejected && $0.aiScore != nil }
-            .sorted { ($0.aiScore?.overall ?? 0) > ($1.aiScore?.overall ?? 0) }
-
-        switch aiScoringStrategy {
-        case .budget:
-            return []
-        case .balanced:
-            let count = max(1, Int(ceil(Double(scoredAssets.count) * 0.2)))
-            return Array(scoredAssets.prefix(count)).map(\.id)
-        case .bestQuality:
-            return scoredAssets.map(\.id)
-        }
-    }
-
-    private func applyDetailedSuggestions(_ suggestions: [UUID: EditSuggestions]) {
-        for (assetID, editSuggestions) in suggestions {
-            guard let index = assets.firstIndex(where: { $0.id == assetID }) else { continue }
-            assets[index].editSuggestions = editSuggestions
         }
     }
 
@@ -1865,6 +1586,8 @@ private extension ImportSourceDescriptor {
             return "sd_card"
         case .iPhone:
             return "iphone"
+        case .photosLibrary:
+            return "photos_library"
         }
     }
 }

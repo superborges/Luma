@@ -46,43 +46,16 @@ struct StatusBarView: View {
                     }
                 }
 
-                if store.isCloudScoring {
-                    HStack(spacing: 5) {
-                        Image(systemName: "sparkles")
-                            .font(.caption2)
-                            .foregroundStyle(LumaSemantic.ai)
-                        Text("AI 评分中 \(store.cloudScoringCompleted)/\(store.cloudScoringTotal)")
-                            .font(.caption.weight(.light))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                }
-
                 if store.importProgress?.phase == .paused {
                     Text("导入已暂停")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
-                }
-
-                if store.costTracker.totalCost > 0 {
-                    Text(String(format: "已花费 $%.2f", store.costTracker.totalCost))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
                 }
             }
 
             if store.isLocalScoring {
                 ProgressView(value: store.localScoringFraction)
                     .progressViewStyle(.linear)
-                    .frame(height: 3)
-                    .clipShape(Capsule())
-            }
-
-            if store.isCloudScoring {
-                ProgressView(value: store.cloudScoringFraction)
-                    .progressViewStyle(.linear)
-                    .tint(LumaSemantic.ai)
                     .frame(height: 3)
                     .clipShape(Capsule())
             }

@@ -10,6 +10,7 @@ struct ProjectSummary: Identifiable, Hashable {
     let directory: URL
     let name: String
     let createdAt: Date
+    let coverImageURL: URL?
     let state: State
     let isCurrent: Bool
 

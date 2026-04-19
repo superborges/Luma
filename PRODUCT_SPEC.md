@@ -3,21 +3,25 @@
 ## 1. 产品概述
 
 ### 1.1 定位
+
 Luma（拾光）是一款 macOS 原生桌面应用，专为摄影爱好者设计，解决旅行归来后"选片焦虑"的痛点。核心理念是 **"JPEG 做决策，RAW 做交付"**，通过混合 AI 管线（本地 Core ML + 云端 Vision API）实现智能照片筛选、评分、修图建议和归档。
 
 ### 1.2 核心工作流（五阶段管线）
+
 ```
 Ingest → Group → Score → Cull → Export / Archive
 导入     分组     评分     挑选    导出 / 归档
 ```
 
 ### 1.3 目标用户
+
 - 使用相机（Sony/Canon/Nikon/Fuji）+ iPhone 拍照的摄影爱好者
 - 一次旅行产生 300-1000 张照片
 - 拍摄格式：RAW + JPEG（相机）/ HEIC + ProRAW DNG（iPhone）
 - 后期工具：Lightroom Classic / Mac 照片 App
 
 ### 1.4 技术栈
+
 - 语言：Swift
 - UI 框架：SwiftUI（macOS 14+）
 - 最低系统要求：macOS 14 Sonoma, Apple Silicon（M1+）优先
@@ -46,6 +50,7 @@ protocol ImportSourceAdapter {
 ### 2.2 四种导入源
 
 #### 2.2.1 SD 卡导入（SDCardAdapter）
+
 - **检测方式**：V1 使用 `DispatchSource.makeFileSystemObjectSource` 监控 `/Volumes/`；V2 迁移到 `DiskArbitration` 框架过滤可移除媒体
 - **文件扫描**：`FileManager.enumerator(at:)` 递归遍历 `DCIM/` 目录
 - **RAW/JPEG 配对**：按文件名（去掉扩展名）匹配，忽略子目录路径差异
@@ -56,6 +61,7 @@ protocol ImportSourceAdapter {
   - 相机将 RAW/JPEG 分放不同子目录 → 全局文件名匹配
 
 #### 2.2.2 iPhone USB 直连（iPhoneAdapter）
+
 - **框架**：ImageCaptureCore
 - **检测方式**：`ICDeviceBrowser` 设置 delegate，监听 `didAdd device` 回调
 - **文件访问**：通过 PTP 协议，必须用 `ICCameraDevice.requestDownloadFile()` 下载，不能直接访问路径
@@ -67,11 +73,13 @@ protocol ImportSourceAdapter {
   - 人像模式：附带 `AVDepthData` 景深数据
 
 #### 2.2.3 文件夹导入（FolderAdapter）
+
 - **触发方式**：`NSOpenPanel` 手动选择 / 监控 `~/Downloads/` 检测 AirDrop 文件
 - **文件夹监控**：`DispatchSource.makeFileSystemObjectSource` 检测新 HEIC/DNG 文件，弹窗提示导入
 - **Live Photo 配对**：扫描同目录下的 MOV 文件，通过 ContentIdentifier 匹配
 
 #### 2.2.4 照片库导入（PhotosLibraryAdapter）
+
 - **框架**：PhotoKit (`PHPhotoLibrary`)
 - **用途**：整理历年 iPhone 旧照片
 - **枚举方式**：`PHFetchResult` 按日期范围/相册筛选
@@ -83,13 +91,16 @@ protocol ImportSourceAdapter {
 
 核心原则：**不让用户等**。
 
-| 阶段 | 内容 | 速度 | 线程优先级 | 用户可做 |
-|------|------|------|-----------|---------|
-| Phase 1 | 扫描文件列表 + 提取 EXIF 缩略图（~15KB/张）+ 解析元数据 | 500张 → 3-5秒 | 主线程 | 浏览缩略图网格 |
-| Phase 2 | 异步拷贝全尺寸 JPEG/HEIC | 500张 → 30-60秒 | .userInitiated | 放大查看 + 触发 AI 评分 |
-| Phase 3 | 低优先级拷贝 RAW/DNG | 500张 → 5-8分钟 | .utility | 仅导出选中照片时需要 |
+
+| 阶段      | 内容                                   | 速度            | 线程优先级          | 用户可做            |
+| ------- | ------------------------------------ | ------------- | -------------- | --------------- |
+| Phase 1 | 扫描文件列表 + 提取 EXIF 缩略图（~15KB/张）+ 解析元数据 | 500张 → 3-5秒   | 主线程            | 浏览缩略图网格         |
+| Phase 2 | 异步拷贝全尺寸 JPEG/HEIC                    | 500张 → 30-60秒 | .userInitiated | 放大查看 + 触发 AI 评分 |
+| Phase 3 | 低优先级拷贝 RAW/DNG                       | 500张 → 5-8分钟  | .utility       | 仅导出选中照片时需要      |
+
 
 **技术要点**：
+
 - 缩略图统一缩放到 400px 长边（500张 ≈ 200-300MB 内存）
 - 缩略图提取使用 `CGImageSourceCreateThumbnailAtIndex`，EXIF 解析使用 `CGImageSourceCopyPropertiesAtIndex`，同一次 CGImageSource 打开中完成
 - SD 卡文件拷贝并发数限制 2-3（避免随机读取降低 UHS-I/II 吞吐）
@@ -100,11 +111,13 @@ protocol ImportSourceAdapter {
 ### 2.4 HEIC 处理策略
 
 采用 **全程保留 HEIC 原生格式**，仅在发送 Vision API 时临时转码为 JPEG。理由：
+
 - macOS CGImageSource / Core ML 原生支持 HEIC 解码
 - 保留 10-bit 色深和 HDR 信息
 - 减少导入时的 CPU 开销
 
 ### 2.5 本地存储结构
+
 ```
 ~/Library/Application Support/Luma/
   └── 2026-04-03_kyoto/           ← 按日期+地点自动命名
@@ -271,21 +284,25 @@ struct LocalEdit: Codable {
 ### 4.1 两层聚类策略
 
 #### 第一层：时间聚类（粗分组）
+
 - 按 `captureDate` 排序，相邻照片时间差 > 30 分钟则拆为新组
 - 阈值可配置（密集拍摄场景可降至 15 分钟）
 
 #### 第二层：GPS 空间聚类（增强分组，仅有 GPS 数据时）
+
 - 在时间组内叠加 DBSCAN 空间聚类
 - epsilon ≈ 200 米，min_samples = 3
 - 解决"同一天内多个地点"的分组问题（如京都清水寺 vs 伏见稻荷）
 
 #### 第三层：视觉相似度（组内细分）
+
 - 在每个时间+空间组内，用视觉相似度识别"同一构图的连拍"
 - Apple Vision 框架提取特征向量（VNFeaturePrintObservation）
 - `featurePrint.computeDistance()` 返回欧氏距离，阈值 < **0.8** → 归为同一子组
 - 子组内的照片是"选一张最佳"的候选集
 
 ### 4.2 分组命名
+
 - 有 GPS → 反向地理编码获取地点名（`CLGeocoder`）
 - 无 GPS → 使用日期 + 时间段（"4月3日·下午"）
 - 可选：用 AI 根据照片内容生成描述性名称（"清水寺·日落"）
@@ -326,6 +343,7 @@ struct SubGroup: Identifiable, Codable {
 ### 5.2 本地 Core ML 评估（Phase A，免费离线）
 
 在 Phase 2（JPEG 拷贝完成）后立即触发，基于 JPEG/HEIC 推理：
+
 - **模糊检测**：拉普拉斯方差法（快速）或轻量级 Core ML 分类模型
 - **曝光评估**：RGB 直方图分析，检测过曝（>95% 区域占比 > 30%）和欠曝
 - **人脸检测 + 闭眼检测**：Apple Vision 框架 `VNDetectFaceLandmarksRequest` 原生支持
@@ -382,11 +400,13 @@ enum ModelRole: Codable {
 
 #### 5.3.3 评分策略
 
-| 策略 | 说明 | 预估费用（500张） |
-|------|------|------------------|
-| 省钱模式 | 本地 Core ML + 便宜模型，无精评 | ~$0.15 |
-| 均衡模式 | 便宜模型全量 + 贵模型仅 Top 20% | ~$1.00 |
-| 最佳质量 | 贵模型全量 + 修图建议 | ~$4.50 |
+
+| 策略   | 说明                    | 预估费用（500张） |
+| ---- | --------------------- | ---------- |
+| 省钱模式 | 本地 Core ML + 便宜模型，无精评 | ~$0.15     |
+| 均衡模式 | 便宜模型全量 + 贵模型仅 Top 20% | ~$1.00     |
+| 最佳质量 | 贵模型全量 + 修图建议          | ~$4.50     |
+
 
 #### 5.3.4 BatchScheduler
 
@@ -494,6 +514,7 @@ Return JSON:
 ### 5.5 ResponseNormalizer
 
 不同 API 协议的响应格式不同，需要统一归一化：
+
 - OpenAI 兼容：`response.choices[0].message.content` → parse JSON
 - Gemini：`response.candidates[0].content.parts[0].text` → parse JSON
 - Anthropic：`response.content[0].text` → parse JSON
@@ -505,26 +526,31 @@ Return JSON:
 
 ### 6.1 界面布局：三栏设计
 
-| 左栏（200px） | 中栏（弹性宽度） | 右栏（220px） |
-|--------------|-----------------|--------------|
-| 分组列表 | 照片网格 / 单张放大 | AI 评分 + 修图建议 |
-| 每组显示：名称、数量、进度条 | 4列网格，AI推荐蓝色边框 | 五维评分条 |
-| 进度条：绿=选中 灰=待定 红=拒绝 | 废片半透明 + 原因标签 | 修图参数可视化 |
+
+| 左栏（200px）          | 中栏（弹性宽度）      | 右栏（220px）    |
+| ------------------ | ------------- | ------------ |
+| 分组列表               | 照片网格 / 单张放大   | AI 评分 + 修图建议 |
+| 每组显示：名称、数量、进度条     | 4列网格，AI推荐蓝色边框 | 五维评分条        |
+| 进度条：绿=选中 灰=待定 红=拒绝 | 废片半透明 + 原因标签  | 修图参数可视化      |
+
 
 ### 6.2 快捷键
 
-| 快捷键 | 功能 |
-|--------|------|
-| `P` | 标记选中（Picked） |
-| `X` | 标记拒绝（Rejected） |
-| `U` | 撤销标记，回到待定 |
-| `→` / `←` | 下一张 / 上一张 |
-| `Space` | 切换放大/网格视图 |
-| `1-5` | 手动设置星级（覆盖AI评分） |
-| `Cmd+A` | 选中当前组 AI 推荐的所有照片 |
-| `Tab` | 跳转到下一组 |
+
+| 快捷键       | 功能               |
+| --------- | ---------------- |
+| `P`       | 标记选中（Picked）     |
+| `X`       | 标记拒绝（Rejected）   |
+| `U`       | 撤销标记，回到待定        |
+| `→` / `←` | 下一张 / 上一张        |
+| `Space`   | 切换放大/网格视图        |
+| `1-5`     | 手动设置星级（覆盖AI评分）   |
+| `Cmd+A`   | 选中当前组 AI 推荐的所有照片 |
+| `Tab`     | 跳转到下一组           |
+
 
 ### 6.3 交互细节
+
 - 网格模式：4列瀑布流，每张照片显示 AI 评分角标
 - 放大模式：单张全屏预览，支持手势缩放和拖拽
 - AI 推荐照片显示蓝色边框 + "AI 推荐" 标签
@@ -550,6 +576,7 @@ protocol ExportDestinationAdapter {
 **框架**：PhotoKit (`PHPhotoLibrary`)
 
 **关键能力**：
+
 - **RAW+JPEG 合并素材**：`PHAssetCreationRequest.addResource` 同时添加 `.photo`(RAW/DNG 主资源) 和 `.alternatePhoto`(JPEG/HEIC 预览资源)，顺序不可颠倒
 - **Live Photo 完整还原**：`.addResource(with: .photo)` + `.addResource(with: .pairedVideo)`，ContentIdentifier 必须匹配
 - **保留拍摄日期**：设置 `creationDate` 为原始 EXIF 时间（否则会显示为导入日期）
@@ -558,6 +585,7 @@ protocol ExportDestinationAdapter {
 - **可选写入 AI 评语**：作为照片描述（`PHAssetChangeRequest.creationRequest.comment`）
 
 **注意事项**：
+
 - 需要 Photos Library 写入权限
 - 写入不可撤回 → 导出前必须做确认界面
 - 沙盒 App 需要 `com.apple.security.personal-information.photos-library` entitlement
@@ -565,23 +593,27 @@ protocol ExportDestinationAdapter {
 ### 7.3 Lightroom 导出（LightroomExporter）
 
 #### 7.3.1 Lightroom Classic（推荐方式：自动导入文件夹）
+
 - 用户在 App 设置中配置 Lightroom 的自动导入文件夹路径
 - 导出时将选中照片拷贝到该文件夹
 - **同时生成 XMP sidecar 文件**，写入以下字段：
 
-| App 数据 | XMP 字段 | Lightroom 显示 |
-|----------|----------|---------------|
-| overall 评分 | `xmp:Rating` (1-5) | 星级评分 |
-| userDecision | `xmp:Label` | 颜色标签（Green/Yellow/Red） |
-| AI 标签 | `dc:subject` | 关键词面板 |
-| 分组层级 | `lr:hierarchicalSubject` | 层级关键词（旅行\|京都\|清水寺） |
-| AI 评语 | `dc:description` | 元数据"说明"字段 |
-| 修图建议参数 | `crs:Exposure2012`, `crs:Contrast2012` 等 | **Lightroom 修图滑块预设值** |
-| 裁切建议 | `crs:CropTop/Bottom/Left/Right`, `crs:CropAngle` | Lightroom 裁切预览 |
+
+| App 数据       | XMP 字段                                           | Lightroom 显示           |
+| ------------ | ------------------------------------------------ | ---------------------- |
+| overall 评分   | `xmp:Rating` (1-5)                               | 星级评分                   |
+| userDecision | `xmp:Label`                                      | 颜色标签（Green/Yellow/Red） |
+| AI 标签        | `dc:subject`                                     | 关键词面板                  |
+| 分组层级         | `lr:hierarchicalSubject`                         | 层级关键词（旅行|京都|清水寺）       |
+| AI 评语        | `dc:description`                                 | 元数据"说明"字段              |
+| 修图建议参数       | `crs:Exposure2012`, `crs:Contrast2012` 等         | **Lightroom 修图滑块预设值**  |
+| 裁切建议         | `crs:CropTop/Bottom/Left/Right`, `crs:CropAngle` | Lightroom 裁切预览         |
+
 
 **评分到星级映射**：90+→5星, 75-89→4星, 60-74→3星, 45-59→2星, <45→1星
 
 **修图建议写入 XMP 的关键字段对应**：
+
 ```xml
 <!-- 基础调整 -->
 <crs:Exposure2012>+0.30</crs:Exposure2012>
@@ -600,12 +632,14 @@ protocol ExportDestinationAdapter {
 ```
 
 #### 7.3.2 Lightroom CC
+
 - 导出到本地文件夹，用户手动导入
 - XMP 中 Rating 和 Keywords 可被 CC 读取
 
 ### 7.4 本地文件夹导出（FolderExporter）
 
 三种目录组织模板可选：
+
 - **按日期**：`Trip_Name/2026-04-01/DSC_0001.ARW`
 - **按场景分组**：`Trip_Name/01_清水寺_日落/DSC_0001.ARW`
 - **按星级分层**：`Trip_Name/5star_精选/DSC_0001.ARW`
@@ -643,6 +677,7 @@ struct ExportOptions {
 **框架**：AVFoundation (`AVAssetWriter`)
 
 **生成流程**：
+
 1. 按 PhotoGroup 分组生成（每组一个视频）
 2. 每张照片停留 1.5-2 秒
 3. 叠加 Ken Burns 效果（缓慢平移 + 缩放，随机方向）
@@ -651,6 +686,7 @@ struct ExportOptions {
 6. 输出编码：H.265 (HEVC), 1080p, CRF 28
 
 **文件组织**：
+
 ```
 ~/Library/Application Support/Luma/archives/
   └── 2026-04-03_kyoto/
@@ -660,12 +696,14 @@ struct ExportOptions {
 ```
 
 ### 8.2 缩小保留方案（备选）
+
 - 降至长边 2048px
 - JPEG 质量 80%
 - 保留完整 EXIF
 - 删除 RAW 原文件，仅保留缩小后的 JPEG
 
 ### 8.3 归档清单
+
 - 生成 `archive_manifest.json` 记录每张归档照片的原始文件名、拍摄时间、AI评分、归档方式
 - 便于未来如需找回某张具体照片时检索
 
@@ -674,11 +712,13 @@ struct ExportOptions {
 ## 9. 设置与偏好
 
 ### 9.1 通用设置
+
 - 默认导入目录
 - 缩略图缓存大小上限
 - 语言偏好（中文/英文/跟随系统）
 
 ### 9.2 AI 模型配置
+
 - 模型列表（增删改）
 - 每个模型：协议、Endpoint、API Key（Keychain 加密存储）、Model ID
 - API Key 测试连接验证
@@ -686,6 +726,7 @@ struct ExportOptions {
 - 费用阈值预警（默认 $5 / 批次）
 
 ### 9.3 导出默认值
+
 - 默认导出目标
 - Lightroom 自动导入文件夹路径
 - 默认文件夹组织模板
@@ -696,24 +737,32 @@ struct ExportOptions {
 ## 10. 技术约束与注意事项
 
 ### 10.1 沙盒与权限
-| 权限 | 用途 | entitlement |
-|------|------|-------------|
-| 相机设备 | iPhone USB 访问 | `com.apple.security.device.camera` |
-| 照片库 | 导出到照片 App / 从照片库导入 | `com.apple.security.personal-information.photos-library` |
-| 文件访问 | SD 卡读取、文件夹导出 | `com.apple.security.files.user-selected.read-write` |
-| 网络 | API 调用 | `com.apple.security.network.client` |
-| Keychain | API Key 安全存储 | 默认可用 |
+
+
+| 权限       | 用途                 | entitlement                                              |
+| -------- | ------------------ | -------------------------------------------------------- |
+| 相机设备     | iPhone USB 访问      | `com.apple.security.device.camera`                       |
+| 照片库      | 导出到照片 App / 从照片库导入 | `com.apple.security.personal-information.photos-library` |
+| 文件访问     | SD 卡读取、文件夹导出       | `com.apple.security.files.user-selected.read-write`      |
+| 网络       | API 调用             | `com.apple.security.network.client`                      |
+| Keychain | API Key 安全存储       | 默认可用                                                     |
+
 
 ### 10.2 性能目标
-| 指标 | 目标值 |
-|------|--------|
-| 缩略图首次可见 | < 5 秒（500张） |
-| 网格滚动帧率 | 60fps（LazyVGrid + 缩略图缓存） |
-| 本地 Core ML 评估 | < 3 分钟（500张，M1） |
-| 内存占用（浏览中） | < 500MB |
+
+
+| 指标            | 目标值                      |
+| ------------- | ------------------------ |
+| 缩略图首次可见       | < 5 秒（500张）              |
+| 网格滚动帧率        | 60fps（LazyVGrid + 缩略图缓存） |
+| 本地 Core ML 评估 | < 3 分钟（500张，M1）          |
+| 内存占用（浏览中）     | < 500MB                  |
+
 
 ### 10.3 错误恢复
+
 - 所有导入/导出任务支持断点续传
 - API 调用失败：指数退避重试，3 次失败后跳过并标记
 - 设备意外断开：暂停任务，重连后自动恢复
 - App 崩溃恢复：通过 manifest.json 恢复完整工作状态
+

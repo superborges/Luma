@@ -4,10 +4,9 @@ extension AppSection {
     /// English labels matching Stitch HTML `9bd72cc1`.
     fileprivate var stitchNavTitle: String {
         switch self {
-        case .library: return "Library"
+        case .library: return "Sessions"
         case .imports: return "Imports"
         case .culling: return "Culling"
-        case .editing: return "Editing"
         case .export: return "Export"
         }
     }
@@ -17,7 +16,6 @@ extension AppSection {
         case .library: return "photo.on.rectangle.angled"
         case .imports: return "square.and.arrow.down"
         case .culling: return "checkmark.circle"
-        case .editing: return "slider.horizontal.3"
         case .export: return "square.and.arrow.up"
         }
     }

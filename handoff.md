@@ -66,17 +66,13 @@
 达到下面这些，才算 `v0.1`：
 
 1. 真实目录 `100LEICA` 能稳定完成：
-   - 导入
-   - 分组
-   - 挑片
-   - 导出 / 归档
-
+  - 导入
+  - 分组
+  - 挑片
+  - 导出 / 归档
 2. BurstSet 在已标注样本上不出现明显系统性误并 / 漏并。
-
 3. 主交互卡顿可被 trace 定位，且 `trace-summary-latest.md` 能直接看出热点。
-
 4. `swift build` 稳定通过；测试至少保持“编译通过”，环境允许时跑完整回归。
-
 5. 已知问题被压到“可带着问题进入内测”，而不是“主链路会断”。
 
 ### Release Gate
@@ -101,8 +97,8 @@
   - `group_selected` 已基本收住
   - 当前剩余主热点是 `single_image_loaded`
   - 如果走“网格先选中，再进单页”路径，`single_image_loaded` 已基本消除
- - 导入主链路的最新瓶颈已定位到 `grouping`
-   - 其中大头不是 `BurstSet`，而是地点反查命名
+- 导入主链路的最新瓶颈已定位到 `grouping`
+  - 其中大头不是 `BurstSet`，而是地点反查命名
 
 ## Current State
 
@@ -113,14 +109,12 @@
   - 设置页 / 命令菜单
   - 项目状态持久化
   - 导入监控与恢复基础版
-
 - 导入主链路已可用：
   - 文件夹导入
   - SD 卡导入
   - iPhone USB 导入
   - 导入会话持久化
   - 暂停 / 恢复
-
 - 一级分组 `SceneGroup` 已重做成“时序活动分段”而不是粗糙聚类：
   - 先按时间排序
   - `30m` 仅作为候选切点，不再硬切
@@ -130,7 +124,6 @@
     - DBSCAN 地点簇
     - Vision 场景连续性
   - 同地点 later revisit 仍会保留成新的一级组
-
 - 二级分组 `BurstSet` 已重做成严格顺序分段：
   - 目标语义：短时间、同机位、同拍摄意图、用户大概率只留 1 张
   - 当前规则：
@@ -142,7 +135,6 @@
     - `completeDistanceThreshold = 0.35`
   - 对单张起步 burst，允许边界距离放宽到 `complete` 阈值
   - 多图 burst 仍保留严格 anchor 约束，避免链式误并
-
 - Burst UI 已补到可肉眼验证：
   - 一级组内不再纯平铺单图，而是显示 Burst 卡片
   - 多图 burst 显示堆叠缩略图、`xN`、`Best`
@@ -151,11 +143,9 @@
   - 点击卡片会展开行内缩略图 strip
   - strip 中可直接切图 / 进单页
   - 右侧详情面板显示当前所属 burst 上下文
-
 - 左侧分组栏已从系统 `List` 改成自绘平面导航：
   - 避免系统 sidebar 的圆角和选中态干扰
   - 三栏容器已换成更可控的 `HSplitView`
-
 - 缓存与性能基础设施已补强：
   - `ThumbnailCache` 的磁盘读取和像素解码已移出主线程关键路径
   - `DisplayImageCache` 和缩略图预热已接入
@@ -175,7 +165,6 @@
   - `DisplayImageCache` 单页显示图上限已收紧到最多 `2400px`
   - 单页缓存预热延迟已从 `60ms` 降到 `10ms`
   - 网格选中后会延迟预热当前照片的 display image，降低“先选中再进单页”的冷启动成本
-
 - trace / log 已从“能写”提升到“能定位”：
   - `runtime-latest.jsonl`
   - 每会话独立归档 trace
@@ -199,7 +188,6 @@
     - `derived_state_rebuilt`
     - `single_image_loaded`
     - 各类用户可见错误
-
 - 诊断工具已补齐两类 CLI：
   - `BurstReviewCLI`
     - 读取真实目录
@@ -213,7 +201,6 @@
       - `Hotspot Budgets`
       - `Slow Chains`
       - 最近错误
-
 - 导入性能定位这一轮已收敛到可执行结论：
   - `buildInitialManifest` 已去掉重复分组
   - `GroupingEngine` 已补细分埋点：
@@ -271,7 +258,6 @@
     - `single_image_loaded` avg `0.62ms` / p95 `1.10ms`
   - 说明该路径已不再是热点
   - 仍需关注的是“未预热直接进单页”的冷路径，但首屏已由 thumbnail 兜底
-
 - 最近一轮已确认的导入 trace（`/Users/qinkan/Documents/luma_test_1`）：
   - 总导入：`11.91s`
   - 核心导入链路：`9.24s`
@@ -280,7 +266,6 @@
   - `grouping_subgrouping_completed`：`1.53s`
   - `grouping_location_naming_completed`：`6.30s`
   - 结论：导入阶段最大头是地点命名，不是 `BurstSet`
-
 - 当前 HEAD 还有一笔未验收改动：
   - `ImportManager` 导入时调用 `makeGroups(..., resolvesLocationNames: false)`
   - `ProjectStore` 在导入完成 / 打开项目后异步补地名，并回写 manifest
@@ -300,19 +285,14 @@
 - 一级组智能命名尚未完成
   - 当前仍是规则命名
   - AI 命名只讨论过方案，尚未接入
-
 - 地点命名链路仍未最终验收
   - `CLGeocoder` 已接入
   - 但刚改成“导入后后台补名”
   - 还缺一轮真实导入 trace 和 UI 验证
-
 - `winner / best` 选择策略正在另一个 thread 讨论
   - 这里不要再改策略层语义，除非那个 thread 明确收敛
-
 - `PhotosLibraryAdapter` 仍未实现
-
 - 云端评分的预算中断 / 恢复还未完全产品化
-
 - 发布准备未做完：
   - `Info.plist`
   - entitlements
@@ -362,17 +342,13 @@
 
 - 构建：
   - `HOME=/tmp CLANG_MODULE_CACHE_PATH=/tmp/luma-clang-module-cache SWIFTPM_MODULECACHE_OVERRIDE=/tmp/luma-swiftpm-module-cache swift build`
-
 - 测试：
   - `HOME=/tmp CLANG_MODULE_CACHE_PATH=/tmp/luma-clang-module-cache SWIFTPM_MODULECACHE_OVERRIDE=/tmp/luma-swiftpm-module-cache swift test`
-
 - 生成 burst review pack：
   - `.build/arm64-apple-macosx/debug/Luma --burst-review-root /Users/qinkan/Documents/100LEICA`
-
 - 生成 trace summary：
   - `.build/arm64-apple-macosx/debug/Luma --trace-summary`
   - `.build/arm64-apple-macosx/debug/Luma --trace-summary --trace-summary-file /path/to/runtime.jsonl`
-
 - 真实目录 E2E：
   - `zsh scripts/run_real_folder_e2e.sh /Users/qinkan/Documents/100LEICA`
 
@@ -380,14 +356,11 @@
 
 - 最新 trace：
   - `/Users/qinkan/Library/Application Support/Luma/Diagnostics/runtime-latest.jsonl`
-
 - Trace 会话归档目录：
   - `/Users/qinkan/Library/Application Support/Luma/Diagnostics/RuntimeSessions`
-
 - 最新 trace 摘要：
   - `Artifacts/trace-summary-latest.md`
   - `Artifacts/trace-summary-latest.json`
-
 - 最新 burst review：
   - `Artifacts/burst-review-latest.md`
   - `Artifacts/burst-review-latest.json`
@@ -396,10 +369,10 @@
 
 1. ~~`v0.1` Release Gate~~：**已于 2026-04-11 关闭**（记录见 `MILESTONE_v0.1.md` § Release Gate 验收记录）。
 2. 第一优先先验收最新“后台补地名”版本：
-   - 手动导入 `/Users/qinkan/Documents/luma_test_1`
-   - 看 `import_grouping_completed`
-   - 看 `grouping_background_location_naming_completed`
-   - 看组名是否会在导入后异步变成地点名
+  - 手动导入 `/Users/qinkan/Documents/luma_test_1`
+  - 看 `import_grouping_completed`
+  - 看 `grouping_background_location_naming_completed`
+  - 看组名是否会在导入后异步变成地点名
 3. ~~再补一轮非 `100LEICA` 的真实数据回归~~：`luma_test_1` 已纳入 `run_real_folder_e2e` 常规跑法。
 4. 若主链路仍稳定，再进入一级组 AI 命名。
 5. `winner / best` 继续在另一个 thread 收敛，不要在这里交叉改动。

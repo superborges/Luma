@@ -124,6 +124,21 @@ struct ImportManager: Sendable {
     }
 
     @MainActor
+    func importPhotosLibrarySelection(
+        progress: @escaping @Sendable (ImportProgress) -> Void,
+        snapshot: @escaping @Sendable (ImportedProjectSnapshot) -> Void
+    ) async throws -> ImportedProject {
+        let limit = try chooseRecentPhotosLimit()
+        let displayName = "照片 App · 最近 \(limit) 张"
+        let source = ImportSourceDescriptor.photosLibrary(
+            albumLocalIdentifier: nil,
+            limit: limit,
+            displayName: displayName
+        )
+        return try await importFromSource(source, progress: progress, snapshot: snapshot)
+    }
+
+    @MainActor
     func importIPhoneSelection(
         progress: @escaping @Sendable (ImportProgress) -> Void,
         snapshot: @escaping @Sendable (ImportedProjectSnapshot) -> Void
@@ -666,6 +681,8 @@ struct ImportManager: Sendable {
             return SDCardAdapter(volumeURL: URL(filePath: volumePath))
         case .iPhone(let deviceID, let deviceName):
             return iPhoneAdapter(deviceID: deviceID, deviceName: deviceName)
+        case .photosLibrary(let albumID, let limit, _):
+            return PhotosLibraryAdapter(albumLocalIdentifier: albumID, limit: limit)
         }
     }
 
@@ -787,7 +804,31 @@ struct ImportManager: Sendable {
             return "sd_card"
         case .iPhone:
             return "iphone"
+        case .photosLibrary:
+            return "photos_library"
         }
+    }
+
+    @MainActor
+    private func chooseRecentPhotosLimit() throws -> Int {
+        let alert = NSAlert()
+        alert.messageText = "从 Mac · 照片 App 导入"
+        alert.informativeText = "仅读取本地已缓存的照片，不会触发 iCloud 下载。请选择要导入的最近照片数量。"
+        alert.addButton(withTitle: "导入")
+        alert.addButton(withTitle: "取消")
+
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 220, height: 26), pullsDown: false)
+        let options: [Int] = [100, 200, 500, 1000, 2000]
+        for value in options {
+            popup.addItem(withTitle: "最近 \(value) 张")
+        }
+        popup.selectItem(at: 1)
+        alert.accessoryView = popup
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            throw LumaError.userCancelled
+        }
+        return options[popup.indexOfSelectedItem]
     }
 
     @MainActor

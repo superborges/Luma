@@ -18,6 +18,11 @@ enum StitchTheme {
     static let sidebarActiveBackground = Color(white: 0.15).opacity(0.8) // neutral-800/80
     static let sidebarInactiveText = Color(red: 0.64, green: 0.64, blue: 0.64) // neutral-400
     static let sidebarActiveText = Color(red: 0.38, green: 0.65, blue: 0.98) // blue-400
+    static let surface = Color(red: 0.075, green: 0.075, blue: 0.075) // #131313
+    static let surfaceContainer = Color(red: 0.125, green: 0.122, blue: 0.122) // #201f1f
+    static let surfaceVariant = Color(red: 0.208, green: 0.208, blue: 0.204) // #353534
+    static let onSurfaceVariant = Color(red: 0.757, green: 0.776, blue: 0.843) // #c1c6d7
+    static let onPrimaryContainer = Color(red: 0.0, green: 0.157, blue: 0.361) // #00285c
     static let topBarBackground = Color(red: 0.04, green: 0.04, blue: 0.04).opacity(0.8) // neutral-950/80
     static let glassCard = Color(red: 0.208, green: 0.208, blue: 0.204).opacity(0.7) // rgba(53,53,52,0.7)
 }
