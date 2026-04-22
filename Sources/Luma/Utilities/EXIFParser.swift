@@ -41,6 +41,32 @@ enum EXIFParser {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
+    /// 中央大图用：若整图长边不超过 `maxLongEdge`，直接 `CreateImageAtIndex` 解码主图，
+    /// 避免 `CreateThumbnailAtIndex` 在 HEIC/JPEG 上命中**内嵌小缩略图**导致永远发糊。
+    /// 若超过预算则退回 `makeThumbnail` 做降采样。
+    static func cgImageForDisplay(at url: URL, maxLongEdge: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            return nil
+        }
+
+        if let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+            let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+            let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+            let longEdge = max(w, h)
+            if longEdge > 0, longEdge <= maxLongEdge {
+                let options: [CFString: Any] = [
+                    kCGImageSourceShouldCache: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                ]
+                if let full = CGImageSourceCreateImageAtIndex(source, 0, options as CFDictionary) {
+                    return full
+                }
+            }
+        }
+
+        return makeThumbnail(from: url, maxPixelSize: maxLongEdge)
+    }
+
     private static func fallbackMetadata(for url: URL) -> EXIFData {
         EXIFData(
             captureDate: fileCreationDate(for: url),

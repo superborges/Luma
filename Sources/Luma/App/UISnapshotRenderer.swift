@@ -3,17 +3,10 @@ import Foundation
 import SwiftUI
 
 enum UISnapshotRenderer {
-    private enum SnapshotViewMode {
-        case fullWindow
-        case gridOnly
-        case sidebarOnly
-    }
-
     private struct SnapshotRequest {
         let outputURL: URL
         let projectURL: URL?
         let size: NSSize
-        let viewMode: SnapshotViewMode
     }
 
     static func requestedOutputURL(from arguments: [String]) -> URL? {
@@ -38,24 +31,10 @@ enum UISnapshotRenderer {
 
         let store = try makeStore(baseDirectory: request.outputURL.deletingLastPathComponent(), projectURL: request.projectURL)
         let size = request.size
-        let rootView: AnyView
-        switch request.viewMode {
-        case .fullWindow:
-            rootView = AnyView(
-                ContentView(store: store)
-                    .frame(width: size.width, height: size.height)
-            )
-        case .gridOnly:
-            rootView = AnyView(
-                PhotoGrid(store: store)
-                    .frame(width: size.width, height: size.height)
-            )
-        case .sidebarOnly:
-            rootView = AnyView(
-                GroupSidebar(store: store)
-                    .frame(width: size.width, height: size.height)
-            )
-        }
+        let rootView = AnyView(
+            ContentView(store: store)
+                .frame(width: size.width, height: size.height)
+        )
 
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = NSRect(origin: .zero, size: size)
@@ -91,8 +70,7 @@ enum UISnapshotRenderer {
         SnapshotRequest(
             outputURL: outputURL,
             projectURL: requestedProjectURL(from: arguments),
-            size: requestedSnapshotSize(from: arguments) ?? NSSize(width: 1440, height: 900),
-            viewMode: requestedSnapshotViewMode(from: arguments)
+            size: requestedSnapshotSize(from: arguments) ?? NSSize(width: 1440, height: 900)
         )
     }
 
@@ -135,27 +113,6 @@ enum UISnapshotRenderer {
         return NSSize(width: width, height: height)
     }
 
-    private static func requestedSnapshotViewMode(from arguments: [String]) -> SnapshotViewMode {
-        let rawValue: String?
-        if let inline = arguments.first(where: { $0.hasPrefix("--snapshot-view=") }) {
-            rawValue = String(inline.dropFirst("--snapshot-view=".count))
-        } else if let index = arguments.firstIndex(of: "--snapshot-view"),
-                  arguments.indices.contains(index + 1) {
-            rawValue = arguments[index + 1]
-        } else {
-            rawValue = nil
-        }
-
-        switch rawValue?.lowercased() {
-        case "grid":
-            return .gridOnly
-        case "sidebar":
-            return .sidebarOnly
-        default:
-            return .fullWindow
-        }
-    }
-
     @MainActor
     private static func makeStore(baseDirectory: URL, projectURL: URL?) throws -> ProjectStore {
         if let projectURL {
@@ -175,36 +132,35 @@ enum UISnapshotRenderer {
 
         let manifestURL = resolvedProjectURL.appendingPathComponent("manifest.json")
         let data = try Data(contentsOf: manifestURL)
-        let manifest = try JSONDecoder.lumaDecoder.decode(ExpeditionManifest.self, from: data)
+        let manifest = try JSONDecoder.lumaDecoder.decode(SessionManifest.self, from: data)
 
         let store = ProjectStore(enableImportMonitoring: false)
         store.currentProjectDirectory = resolvedProjectURL
         store.currentManifestID = manifest.id
-        var expedition = manifest.expedition
-        if expedition.id != manifest.id {
-            expedition = Expedition(
+        var session = manifest.session
+        if session.id != manifest.id {
+            session = Session(
                 id: manifest.id,
-                name: expedition.name,
-                createdAt: expedition.createdAt,
-                updatedAt: expedition.updatedAt,
-                location: expedition.location,
-                tags: expedition.tags,
-                coverAssetID: expedition.coverAssetID,
-                assets: expedition.assets,
-                groups: expedition.groups,
-                importSessions: expedition.importSessions,
-                editingSessions: expedition.editingSessions,
-                exportJobs: expedition.exportJobs
+                name: session.name,
+                createdAt: session.createdAt,
+                updatedAt: session.updatedAt,
+                location: session.location,
+                tags: session.tags,
+                coverAssetID: session.coverAssetID,
+                assets: session.assets,
+                groups: session.groups,
+                importSessions: session.importSessions,
+                editingSessions: session.editingSessions,
+                exportJobs: session.exportJobs
             )
         }
-        store.expeditions = [expedition]
-        store.activeExpeditionID = expedition.id
-        store.selectedGroupID = expedition.groups.first?.id
-        store.selectedAssetID = expedition.groups.first.flatMap { firstGroup in
-            expedition.assets.first(where: { firstGroup.assets.contains($0.id) })?.id
-        } ?? expedition.assets.first?.id
-        store.displayMode = .grid
-        store.localRejectedCount = expedition.assets.filter(\.isTechnicallyRejected).count
+        store.sessions = [session]
+        store.activeSessionID = session.id
+        store.selectedGroupID = session.groups.first?.id
+        store.selectedAssetID = session.groups.first.flatMap { firstGroup in
+            session.assets.first(where: { firstGroup.assets.contains($0.id) })?.id
+        } ?? session.assets.first?.id
+        store.localRejectedCount = session.assets.filter(\.isTechnicallyRejected).count
         return store
     }
 
@@ -235,7 +191,7 @@ enum UISnapshotRenderer {
             let captureDate = startDate.addingTimeInterval(Double(index) * 90 * 60)
             let overall = 92 - (index * 6)
             let score = AIScore(
-                provider: index < 4 ? "local-coreml" : "ollama-vision",
+                provider: index < 4 ? "local-heuristic" : "ollama-vision",
                 scores: PhotoScores(
                     composition: max(52, overall - 3),
                     exposure: max(48, overall - 5),
@@ -348,7 +304,7 @@ enum UISnapshotRenderer {
         ]
 
         let previewID = UUID()
-        let expedition = Expedition(
+        let session = Session(
             id: previewID,
             name: projectName,
             createdAt: .now,
@@ -364,11 +320,10 @@ enum UISnapshotRenderer {
         )
         let store = ProjectStore(enableImportMonitoring: false)
         store.currentManifestID = previewID
-        store.expeditions = [expedition]
-        store.activeExpeditionID = previewID
+        store.sessions = [session]
+        store.activeSessionID = previewID
         store.selectedGroupID = groups[0].id
         store.selectedAssetID = groupOneAssets[1].id
-        store.displayMode = .grid
         store.localRejectedCount = assets.filter(\.isTechnicallyRejected).count
         return store
     }

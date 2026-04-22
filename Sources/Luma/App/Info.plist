@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>app.luma.Luma</string>
+  <key>CFBundleName</key>
+  <string>Luma</string>
+  <key>CFBundleDisplayName</key>
+  <string>Luma</string>
+  <key>CFBundleExecutable</key>
+  <string>Luma</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleSignature</key>
+  <string>????</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <key>LSUIElement</key>
+  <false/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>LSEnvironment</key>
+  <dict>
+    <key>SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE</key>
+    <string>legacy</string>
+  </dict>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>Luma 需要访问「照片」图库以读取你要整理的照片，仅读取本地已缓存版本，不会触发 iCloud 下载。</string>
+  <key>NSPhotoLibraryAddUsageDescription</key>
+  <string>Luma 需要写入「照片」图库，将选中的照片放入新相册；按你的选择可能请求删除未选原图，系统会弹原生确认框。</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Luma 通过 USB 直连访问 iPhone 读取相册。</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Luma 需要控制照片 App 完成导出。</string>
+</dict>
+</plist>

@@ -13,8 +13,23 @@ struct PhotosAppExporter: ExportDestinationAdapter {
     }
 
     func export(assets: [MediaAsset], groups: [PhotoGroup], options: ExportOptions) async throws -> ExportResult {
-        let pickedAssets = assets.filter { $0.userDecision == .picked }
-        guard !pickedAssets.isEmpty else {
+        let pickedAssets = assets.filter { asset in
+            guard asset.userDecision == .picked else { return false }
+            if let only = options.onlyAssetIDs { return only.contains(asset.id) }
+            return true
+        }
+
+        // iCloud 闭环：按策略收集需要回删的原图（源 = 照片 App 且用户 reject）。
+        let cleanupTargets: [MediaAsset] = {
+            guard options.photosCleanupStrategy == .deleteRejectedOriginals else { return [] }
+            return assets.filter { asset in
+                guard asset.userDecision == .rejected else { return false }
+                if case .photosLibrary(let id) = asset.source, !id.isEmpty { return true }
+                return false
+            }
+        }()
+
+        guard !pickedAssets.isEmpty || !cleanupTargets.isEmpty else {
             return ExportResult(exportedCount: 0, skippedCount: 0, destinationDescription: displayName)
         }
 
@@ -52,6 +67,37 @@ struct PhotosAppExporter: ExportDestinationAdapter {
             }
         }
 
+        // 回删目标：按 localIdentifier 换成 PHAsset 引用。用户取消系统弹窗 → performChanges 返回 error，交由调用方处理。
+        var cleanupPHAssets: [PHAsset] = []
+        if !cleanupTargets.isEmpty {
+            let cleanupIdentifiers = cleanupTargets.compactMap { asset -> String? in
+                if case .photosLibrary(let id) = asset.source, !id.isEmpty { return id }
+                return nil
+            }
+            let fetched = PHAsset.fetchAssets(withLocalIdentifiers: cleanupIdentifiers, options: nil)
+            fetched.enumerateObjects { phAsset, _, _ in
+                cleanupPHAssets.append(phAsset)
+            }
+        }
+
+        // Dry-run 安全阀：options 里勾上「试跑」或 env LUMA_PHOTOS_CLEANUP_DRY_RUN=1，
+        // 走完全流程但跳过 deleteAssets，只记录"将要删除 N 张"。
+        let dryRunEnv = ProcessInfo.processInfo.environment["LUMA_PHOTOS_CLEANUP_DRY_RUN"] == "1"
+        let dryRunCleanup = options.photosCleanupDryRun || dryRunEnv
+        if !cleanupPHAssets.isEmpty {
+            let ids = cleanupPHAssets.map(\.localIdentifier)
+            RuntimeTrace.event(
+                dryRunCleanup ? "photos_cleanup_dry_run" : "photos_cleanup_planned",
+                category: "export",
+                metadata: [
+                    "count": "\(cleanupPHAssets.count)",
+                    "strategy": options.photosCleanupStrategy.rawValue,
+                    "dry_run": dryRunCleanup ? "1" : "0",
+                    "local_identifiers_prefix": ids.prefix(5).joined(separator: ","),
+                ]
+            )
+        }
+
         let plannedAssets = newSourceAssets.compactMap { asset -> PlannedAsset? in
             guard let stillPhoto = stillPhotoURL(for: asset, options: options) else {
                 return nil
@@ -74,13 +120,15 @@ struct PhotosAppExporter: ExportDestinationAdapter {
         }
 
         let totalToProcess = plannedAssets.count + existingPHAssetByAssetID.count
-        guard totalToProcess > 0 else {
+        guard totalToProcess > 0 || !cleanupPHAssets.isEmpty else {
             throw LumaError.unsupported("当前 Picked 素材里没有可写入照片 App 的源文件。")
         }
 
         let existingAlbumsByGroupID = existingAlbums(for: groups)
 
         let photoLibrary = PHPhotoLibrary.shared()
+
+        // Stage 1：创建新资产 + 构建相册（picked 入相册）。这一阶段不涉及删除，用户不会看到弹窗，必成功。
         try await performChanges(in: photoLibrary) {
             var placeholdersByAssetID: [UUID: PHObjectPlaceholder] = [:]
 
@@ -129,10 +177,50 @@ struct PhotosAppExporter: ExportDestinationAdapter {
             }
         }
 
+        // Stage 2：清理未选原图。独立 performChanges，用户取消只回滚"删除"，不会连带回滚 Stage 1 的相册。
+        var actuallyCleanedCount = 0
+        var cleanupCancelledCount = 0
+        if !cleanupPHAssets.isEmpty, !dryRunCleanup {
+            do {
+                try await performChanges(in: photoLibrary) {
+                    PHAssetChangeRequest.deleteAssets(cleanupPHAssets as NSArray)
+                }
+                actuallyCleanedCount = cleanupPHAssets.count
+                RuntimeTrace.event(
+                    "photos_cleanup_committed",
+                    category: "export",
+                    metadata: ["count": "\(cleanupPHAssets.count)"]
+                )
+            } catch LumaError.userCancelled {
+                cleanupCancelledCount = cleanupPHAssets.count
+                RuntimeTrace.event(
+                    "photos_cleanup_cancelled_by_user",
+                    category: "export",
+                    metadata: ["declined_count": "\(cleanupPHAssets.count)"]
+                )
+            }
+        } else if !cleanupPHAssets.isEmpty, dryRunCleanup {
+            // Dry-run：相册已建，仅回报"本会删除"的数量，不实际调用 PhotoKit。
+            actuallyCleanedCount = cleanupPHAssets.count
+        }
+
+        // 摘要相册描述：按分组建子相册时给"X 个分组相册"，否则给单一相册名（默认按 Session 名）。
+        let albumDescription: String
+        if options.createAlbumPerGroup, !groups.isEmpty {
+            albumDescription = "\(groups.count) 个分组相册"
+        } else {
+            albumDescription = "Photos · \(displayName)"
+        }
+
         return ExportResult(
             exportedCount: totalToProcess,
             skippedCount: max(0, pickedAssets.count - totalToProcess),
-            destinationDescription: displayName
+            destinationDescription: displayName,
+            cleanedCount: actuallyCleanedCount,
+            cleanupCancelledCount: cleanupCancelledCount,
+            failures: [],
+            albumDescription: albumDescription,
+            destinationURL: nil
         )
     }
 
@@ -153,7 +241,17 @@ struct PhotosAppExporter: ExportDestinationAdapter {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             photoLibrary.performChanges(changes) { success, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    // 用户在系统原生「删除确认」对话框点「不删除」→ NSUserCancelledError (3072)。
+                    // 不是真错误，翻成 .userCancelled 让上层按取消处理；整批 performChanges 已回滚，
+                    // 相册也不会被创建，照片库保持原样。
+                    let ns = error as NSError
+                    if ns.code == NSUserCancelledError
+                        || (ns.domain == NSCocoaErrorDomain && ns.code == NSUserCancelledError)
+                        || (ns.domain == "PHPhotosErrorDomain" && ns.code == 3072) {
+                        continuation.resume(throwing: LumaError.userCancelled)
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
                 } else if success {
                     continuation.resume(returning: ())
                 } else {

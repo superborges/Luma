@@ -24,8 +24,8 @@ enum StitchTypography {
     static let librarySubtitle = font(size: 14, weight: .regular) // text-sm text-outline
     static let sectionHeading = font(size: 14, weight: .bold) // text-sm font-bold uppercase
     static let viewAllLink = font(size: 12, weight: .medium) // text-xs font-medium
-    static let newExpeditionLabel = font(size: 14, weight: .bold) // text-sm font-bold
-    static let newExpeditionIcon: CGFloat = 14 // material text-sm
+    static let newSessionLabel = font(size: 14, weight: .bold) // text-sm font-bold
+    static let newSessionIcon: CGFloat = 14 // material text-sm
     static let featuredTitle = font(size: 24, weight: .bold) // text-2xl font-bold
     static let latestSyncBadge = font(size: 10, weight: .bold) // text-[10px] font-bold
     static let featuredMeta = font(size: 14, weight: .regular) // text-sm

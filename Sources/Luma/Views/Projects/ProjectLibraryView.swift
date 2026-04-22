@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Expedition management UI (split list + detail), presented as a **sheet** only.
+/// Session management UI (split list + detail), presented as a **sheet** only.
 struct ProjectLibraryView: View {
     @Bindable var store: ProjectStore
 
@@ -20,7 +20,7 @@ struct ProjectLibraryView: View {
                 syncSelection()
             }
             .alert(
-                "删除远征？",
+                "删除此 Session？",
                 isPresented: Binding(
                     get: { projectPendingDeletion != nil },
                     set: { if !$0 { projectPendingDeletion = nil } }
@@ -36,7 +36,7 @@ struct ProjectLibraryView: View {
                     projectPendingDeletion = nil
                 }
             } message: { summary in
-                Text("将删除远征「\(summary.name)」及其本地目录中的 Luma 数据。此操作不可撤回。")
+                Text("将删除 Session「\(summary.name)」及其本地目录中的 Luma 数据。此操作不可撤回。")
             }
     }
 
@@ -46,9 +46,9 @@ struct ProjectLibraryView: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("远征库")
+                    Text("Session 库")
                         .font(.title2.weight(.semibold))
-                    Text("查看、打开或删除本机远征。浏览全部远征请从 Library 进入「Luma - All Expeditions Gallery」。")
+                    Text("查看、打开或删除本机 Session。")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -70,9 +70,9 @@ struct ProjectLibraryView: View {
 
             if store.projectSummaries.isEmpty {
                 ContentUnavailableView(
-                    "暂无远征",
+                    "暂无 Session",
                     systemImage: "photo.on.rectangle.angled",
-                    description: Text("通过「导入」从文件夹、SD 卡或 iPhone 创建远征；或确认本机应用支持目录中已有远征清单。")
+                    description: Text("通过「导入」从文件夹、SD 卡或 iPhone 创建 Session；或确认本机应用支持目录中已有项目。")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -92,9 +92,9 @@ struct ProjectLibraryView: View {
                             detailView(for: selectedSummary)
                         } else {
                             ContentUnavailableView(
-                                "未选择远征",
+                                "未选择 Session",
                                 systemImage: "folder",
-                                description: Text("在左侧列表中选择一个远征以查看路径、素材数量与操作。")
+                                description: Text("在左侧列表中选择一个 Session 以查看路径、素材数量与操作。")
                             )
                         }
                     }
@@ -119,7 +119,7 @@ struct ProjectLibraryView: View {
                 Text(summary.name)
                     .font(.title3.weight(.semibold))
                 if summary.isCurrent {
-                    Text("当前远征")
+                    Text("当前")
                         .font(.caption2.weight(.semibold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -153,7 +153,7 @@ struct ProjectLibraryView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else if !summary.isCurrent {
-                Text("打开后将进入 Culling 工作区，可筛选、评分与导出。")
+                Text("打开后将进入选片工作区，可筛选、评分与导出。")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -170,13 +170,13 @@ struct ProjectLibraryView: View {
             Spacer()
 
             HStack {
-                Button("打开远征") {
+                Button("打开") {
                     store.openProject(summary)
                 }
                 .disabled(summary.isCurrent || !summary.isOpenable)
                 .stitchHoverDimming()
 
-                Button("删除远征", role: .destructive) {
+                Button("删除", role: .destructive) {
                     projectPendingDeletion = summary
                 }
                 .stitchHoverDimming(opacity: 0.88)

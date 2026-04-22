@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// v1 首页占位：Import Session 列表 + "新建 Import Session" 入口。
-/// Phase 1 会接入真正的 SessionStore；当前只渲染占位让 ContentView 可编译运行。
+/// 首页 Session 列表：展示所有 Session、新建 Import Session、排序、打开/归档/删除。
 struct SessionListView: View {
     @Bindable var store: ProjectStore
 
@@ -13,40 +12,23 @@ struct SessionListView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(StitchTheme.background)
+        .onAppear { store.refreshProjectSummaries() }
     }
 
     private var header: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Sessions")
+                Text("Session")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(StitchTheme.onSurface)
-                Text("从 SD 卡 / 本地目录 / Mac·照片 App / iPhone 创建一个 Import Session")
+                Text("导入素材 → 选片（当前页）→ 导出；从下方选择已有项目或新建导入")
                     .font(.system(size: 12))
                     .foregroundStyle(StitchTheme.onSurfaceVariant)
             }
             Spacer(minLength: 0)
+            sortMenu
             Menu {
-                Button {
-                    Task { await store.importFolder() }
-                } label: {
-                    Label("普通目录", systemImage: "folder")
-                }
-                Button {
-                    Task { await store.importSDCard() }
-                } label: {
-                    Label("SD 卡", systemImage: "sdcard")
-                }
-                Button {
-                    Task { await store.importPhotosLibrary() }
-                } label: {
-                    Label("Mac · 照片 App (iCloud)", systemImage: "photo.on.rectangle.angled")
-                }
-                Button {
-                    Task { await store.importIPhone() }
-                } label: {
-                    Label("iPhone · USB 直连", systemImage: "iphone")
-                }
+                ImportSourceMenuItems(store: store)
             } label: {
                 Label("新建 Import Session", systemImage: "plus")
                     .font(.system(size: 13, weight: .semibold))
@@ -66,6 +48,35 @@ struct SessionListView: View {
         .padding(.vertical, 20)
     }
 
+    private var sortMenu: some View {
+        Menu {
+            ForEach(SessionListSort.allCases) { sort in
+                Button {
+                    store.updateSessionListSort(sort)
+                } label: {
+                    if sort == store.sessionListSort {
+                        Label(sort.label, systemImage: "checkmark")
+                    } else {
+                        Text(sort.label)
+                    }
+                }
+            }
+        } label: {
+            Label("排序：\(store.sessionListSort.label)", systemImage: "arrow.up.arrow.down")
+                .font(.system(size: 12))
+                .foregroundStyle(StitchTheme.onSurfaceVariant)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(StitchTheme.surfaceContainer)
+                )
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
     @ViewBuilder
     private var content: some View {
         if store.projectSummaries.isEmpty {
@@ -76,6 +87,8 @@ struct SessionListView: View {
                     ForEach(store.projectSummaries) { summary in
                         SessionRow(summary: summary) {
                             store.openProject(summary)
+                        } onArchiveToggle: {
+                            store.setArchive(summary, archived: !summary.isArchived)
                         }
                     }
                 }
@@ -90,10 +103,10 @@ struct SessionListView: View {
             Image(systemName: "tray")
                 .font(.system(size: 36, weight: .light))
                 .foregroundStyle(StitchTheme.onSurfaceVariant.opacity(0.6))
-            Text("还没有 Import Session")
+            Text("还没有 Session")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(StitchTheme.onSurface)
-            Text("点击右上角「新建 Import Session」开始")
+            Text("点击右上角「新建 Import Session」开始导入")
                 .font(.system(size: 12))
                 .foregroundStyle(StitchTheme.onSurfaceVariant)
         }
@@ -104,51 +117,98 @@ struct SessionListView: View {
 private struct SessionRow: View {
     let summary: ProjectSummary
     let onOpen: () -> Void
-    @State private var hovered = false
+    let onArchiveToggle: () -> Void
 
     var body: some View {
-        Button(action: onOpen) {
-            HStack(spacing: 16) {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(StitchTheme.surfaceContainerHigh)
-                    .frame(width: 56, height: 56)
-                    .overlay {
-                        Image(systemName: "photo.stack")
-                            .font(.system(size: 18))
-                            .foregroundStyle(StitchTheme.onSurfaceVariant)
-                    }
-                VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 16) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(StitchTheme.surfaceContainerHigh)
+                .frame(width: 56, height: 56)
+                .overlay {
+                    Image(systemName: "photo.stack")
+                        .font(.system(size: 18))
+                        .foregroundStyle(StitchTheme.onSurfaceVariant)
+                }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
                     Text(summary.name)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(StitchTheme.onSurface)
-                    Text(stateText)
-                        .font(.system(size: 11))
-                        .foregroundStyle(StitchTheme.onSurfaceVariant)
+                    if summary.isArchived {
+                        statusChip(text: "已归档", tint: .gray)
+                    }
+                    if summary.isCurrent {
+                        statusChip(text: "当前", tint: .blue)
+                    }
+                    if summary.isCullingComplete {
+                        statusChip(text: "选片完成", tint: .green)
+                    }
+                    if summary.exportJobCount > 0 {
+                        statusChip(text: "已导出", tint: .accentColor)
+                    }
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(StitchTheme.onSurfaceVariant.opacity(0.6))
+                Text(summary.stateSummary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(StitchTheme.onSurfaceVariant)
+                if summary.totalAssetCount > 0 {
+                    progressBar
+                }
+                if let last = summary.lastExportedAt {
+                    Text("最近导出：\(last.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.system(size: 10))
+                        .foregroundStyle(StitchTheme.onSurfaceVariant.opacity(0.7))
+                }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(hovered ? StitchTheme.surfaceContainerHigh : StitchTheme.surfaceContainer)
-            )
-            .contentShape(Rectangle())
+            Spacer(minLength: 0)
+            Menu {
+                Button("打开") { onOpen() }
+                    .disabled(!summary.isOpenable)
+                Divider()
+                Button(summary.isArchived ? "取消归档" : "归档") { onArchiveToggle() }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(StitchTheme.onSurfaceVariant)
+                    .padding(8)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(StitchTheme.onSurfaceVariant.opacity(0.6))
         }
-        .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.15), value: hovered)
-        .onHover { hovered = $0 }
+        .opacity(summary.isArchived ? 0.6 : 1)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(StitchTheme.surfaceContainer)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { onOpen() }
+        .onTapGesture { onOpen() }
+        .accessibilityAction(named: "打开") { onOpen() }
+        .accessibilityAction(named: summary.isArchived ? "取消归档" : "归档") { onArchiveToggle() }
     }
 
-    private var stateText: String {
-        switch summary.state {
-        case .ready(let assetCount, let groupCount):
-            return "\(assetCount) 张 · \(groupCount) 组"
-        case .unavailable(let reason):
-            return "无法读取：\(reason)"
+    private var progressBar: some View {
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(Color.white.opacity(0.06))
+                .frame(width: 140, height: 3)
+            Capsule()
+                .fill(summary.isCullingComplete ? Color.green : StitchTheme.primary)
+                .frame(width: 140 * summary.decisionFraction, height: 3)
         }
+    }
+
+    private func statusChip(text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .bold))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(tint.opacity(0.18), in: Capsule())
+            .foregroundStyle(tint)
     }
 }

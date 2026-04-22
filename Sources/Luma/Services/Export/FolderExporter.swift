@@ -21,44 +21,65 @@ struct FolderExporter: ExportDestinationAdapter {
 
         var exportedCount = 0
         var skippedCount = 0
+        var failures: [ExportFailure] = []
 
         for asset in pickedAssets {
-            guard let sourceURL = asset.rawURL ?? asset.previewURL else {
+            // 仅按 ID 过滤"仅重试失败项"；nil 表示导全部 picked。
+            if let only = options.onlyAssetIDs, !only.contains(asset.id) {
                 skippedCount += 1
                 continue
             }
-
-            let group = groupLookup[asset.id]
-            let destinationFolder = try destinationDirectory(
-                for: asset,
-                group: group,
-                root: outputPath,
-                template: options.folderTemplate
-            )
-            try FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
-
-            let destinationURL = destinationFolder.appendingPathComponent(sourceURL.lastPathComponent)
-            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                try FileManager.default.removeItem(at: destinationURL)
+            guard let sourceURL = asset.rawURL ?? asset.previewURL else {
+                failures.append(ExportFailure(
+                    assetID: asset.id,
+                    fileName: asset.baseName,
+                    reason: "找不到原图或预览文件"
+                ))
+                continue
             }
-            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
 
-            if options.writeXmpSidecar {
-                try XMPWriter.writeSidecar(
+            do {
+                let group = groupLookup[asset.id]
+                let destinationFolder = try destinationDirectory(
                     for: asset,
                     group: group,
-                    nextTo: destinationURL,
-                    includeEditSuggestions: options.writeEditSuggestionsToXmp
+                    root: outputPath,
+                    template: options.folderTemplate
                 )
-            }
+                try FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
 
-            exportedCount += 1
+                let destinationURL = destinationFolder.appendingPathComponent(sourceURL.lastPathComponent)
+                if FileManager.default.fileExists(atPath: destinationURL.path) {
+                    try FileManager.default.removeItem(at: destinationURL)
+                }
+                try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+
+                if options.writeXmpSidecar {
+                    try XMPWriter.writeSidecar(
+                        for: asset,
+                        group: group,
+                        nextTo: destinationURL,
+                        includeEditSuggestions: options.writeEditSuggestionsToXmp
+                    )
+                }
+
+                exportedCount += 1
+            } catch {
+                failures.append(ExportFailure(
+                    assetID: asset.id,
+                    fileName: sourceURL.lastPathComponent,
+                    reason: error.localizedDescription
+                ))
+            }
         }
 
         return ExportResult(
             exportedCount: exportedCount,
             skippedCount: skippedCount,
-            destinationDescription: outputPath.path
+            destinationDescription: outputPath.path,
+            failures: failures,
+            albumDescription: nil,
+            destinationURL: outputPath
         )
     }
 

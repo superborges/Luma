@@ -53,13 +53,8 @@ struct LumaCommands: Commands {
             }
             .keyboardShortcut("x", modifiers: [])
 
-            Button("恢复待定") {
-                store.clearSelectionDecision()
-            }
-            .keyboardShortcut("u", modifiers: [])
-
-            Button("切换预览") {
-                store.toggleDisplayMode()
+            Button("标记待定") {
+                store.markSelection(.pending)
             }
             .keyboardShortcut(.space, modifiers: [])
 
@@ -73,15 +68,15 @@ struct LumaCommands: Commands {
             }
             .keyboardShortcut(.rightArrow, modifiers: [])
 
-            Button("跳到下一组") {
+            Button("上一组") {
+                store.jumpToPreviousGroup()
+            }
+            .keyboardShortcut(.upArrow, modifiers: [])
+
+            Button("下一组") {
                 store.jumpToNextGroup()
             }
-            .keyboardShortcut(.tab, modifiers: [])
-
-            Button("选中推荐照片") {
-                store.selectRecommendedInCurrentScope()
-            }
-            .keyboardShortcut("a", modifiers: [.command])
+            .keyboardShortcut(.downArrow, modifiers: [])
         }
 
         CommandMenu("评分") {

@@ -2,42 +2,53 @@ import AppKit
 import Foundation
 import Observation
 import os
+@preconcurrency import Photos
 
-enum DisplayMode: String {
-    case grid
-    case single
+/// 导出阶段对外暴露的进度（PRD 导出页 Step 4）。
+/// `phase` 决定文案展示，例如 `.fetchingOriginals` → "下载原图 N/M"。
+enum ExportPhase: String {
+    case preparing
+    case confirming        // 等待用户在写入前确认
+    case fetchingOriginals // 仅 Photos 源 → Folder/LR 路径
+    case writing           // 调用 destination adapter.export 中
+    case cleaning          // Photos App 路径下，处理删除/清理
+    case finalizing
 }
 
-enum AppSection: String, CaseIterable, Identifiable {
-    case library
-    case imports
-    case culling
-    case export
+struct ExportProgress: Equatable {
+    var phase: ExportPhase
+    var completed: Int
+    var total: Int
+    var currentName: String?
+}
 
-    var id: String { rawValue }
+/// 选片页右栏「Smart Group 内全部图」的统一 cell 模型。
+/// - `single`：普通单图 cell。
+/// - `burst`：连拍组折叠成 1 张代表（角标显示张数）。
+enum SmartGroupCell: Identifiable {
+    case single(MediaAsset)
+    case burst(BurstDisplayGroup)
 
-    var title: String {
+    var id: UUID {
         switch self {
-        case .library:
-            return "Sessions"
-        case .imports:
-            return "导入"
-        case .culling:
-            return "筛选"
-        case .export:
-            return "导出"
+        case .single(let asset): return asset.id
+        case .burst(let burst): return burst.id
         }
     }
 
-}
-
-extension DisplayMode {
-    var title: String {
+    /// 右栏 cell 上展示的封面（连拍组用代表图）。
+    var coverAsset: MediaAsset {
         switch self {
-        case .grid:
-            return "网格"
-        case .single:
-            return "单页"
+        case .single(let asset): return asset
+        case .burst(let burst): return burst.coverAsset
+        }
+    }
+
+    /// 该 cell 是否包含某张资产（用于高亮 / 中央同步）。
+    func contains(assetID: UUID) -> Bool {
+        switch self {
+        case .single(let asset): return asset.id == assetID
+        case .burst(let burst): return burst.assets.contains(where: { $0.id == assetID })
         }
     }
 }
@@ -83,59 +94,72 @@ final class ProjectStore {
     private let enableImportMonitoring: Bool
 
     var currentProjectDirectory: URL?
-    /// All expeditions known in-memory (typically the active project directory’s expedition).
-    var expeditions: [Expedition] = []
-    var activeExpeditionID: UUID?
+    /// All sessions known in-memory (typically the active project directory’s session).
+    var sessions: [Session] = []
+    var activeSessionID: UUID?
     /// Stable identifier for the current project manifest.
     /// Set from the loaded manifest and reused on every save so the id never drifts.
     /// Exposed for UI snapshot tooling in the same module; set from manifest on load.
     var currentManifestID: UUID = UUID()
     var projectSummaries: [ProjectSummary] = []
+    /// 首页 Session 列表排序键。默认按上次修改。持久化到 UserDefaults。
+    var sessionListSort: SessionListSort = .lastModified
+    private let sessionListSortDefaultsKey = "Luma.sessionListSort"
+    // 历史字段：var photosImportPickerPlan: PhotosImportPlan?
+    // 已移除——picker 现在用 AppKit NSAlert 实现，不再走 SwiftUI sheet。
+    // 见 AppKitPhotosImportPicker。SwiftUI sheet 在该 SDK 组合下无法稳定承载该 picker。
+    /// 当前活跃导入源（USB iPhone / SD 卡）。由 ImportSourceMonitor 推送；UI 据此决定菜单项是否高亮。
+    var detectedImportSources: [ImportSourceDescriptor] = []
 
-    private var activeExpeditionIndex: Int? {
-        guard let activeExpeditionID else { return nil }
-        return expeditions.firstIndex { $0.id == activeExpeditionID }
+    private var activeSessionIndex: Int? {
+        guard let activeSessionID else { return nil }
+        return sessions.firstIndex { $0.id == activeSessionID }
     }
 
-    var currentExpedition: Expedition? {
-        guard let i = activeExpeditionIndex else { return nil }
-        return expeditions[i]
+    var currentSession: Session? {
+        guard let i = activeSessionIndex else { return nil }
+        return sessions[i]
+    }
+
+    /// 是否已进入工作区（含仅内存的 UI 预览；无磁盘目录时仍可展示选片界面）。
+    var hasActiveProject: Bool {
+        currentSession != nil
     }
 
     var projectName: String {
-        get { currentExpedition?.name ?? "Luma" }
+        get { currentSession?.name ?? "Luma" }
         set {
-            guard let i = activeExpeditionIndex else { return }
-            expeditions[i].name = newValue
-            expeditions[i].updatedAt = .now
+            guard let i = activeSessionIndex else { return }
+            sessions[i].name = newValue
+            sessions[i].updatedAt = .now
         }
     }
 
     var createdAt: Date? {
-        get { currentExpedition?.createdAt }
+        get { currentSession?.createdAt }
         set {
-            guard let i = activeExpeditionIndex, let newValue else { return }
-            expeditions[i].createdAt = newValue
-            expeditions[i].updatedAt = .now
+            guard let i = activeSessionIndex, let newValue else { return }
+            sessions[i].createdAt = newValue
+            sessions[i].updatedAt = .now
         }
     }
 
     var assets: [MediaAsset] {
-        get { currentExpedition?.assets ?? [] }
+        get { currentSession?.assets ?? [] }
         set {
-            guard let i = activeExpeditionIndex else { return }
-            expeditions[i].assets = newValue
-            expeditions[i].updatedAt = .now
+            guard let i = activeSessionIndex else { return }
+            sessions[i].assets = newValue
+            sessions[i].updatedAt = .now
             invalidateDerivedState()
         }
     }
 
     var groups: [PhotoGroup] {
-        get { currentExpedition?.groups ?? [] }
+        get { currentSession?.groups ?? [] }
         set {
-            guard let i = activeExpeditionIndex else { return }
-            expeditions[i].groups = newValue
-            expeditions[i].updatedAt = .now
+            guard let i = activeSessionIndex else { return }
+            sessions[i].groups = newValue
+            sessions[i].updatedAt = .now
             invalidateDerivedState()
         }
     }
@@ -149,8 +173,6 @@ final class ProjectStore {
     var recoverableImportSession: ImportSession?
     var importProgress: ImportProgress?
     var isImporting = false
-    var displayMode: DisplayMode = .grid
-    var currentSection: AppSection = .library
     var lastErrorMessage: String? {
         didSet {
             guard let lastErrorMessage, lastErrorMessage != oldValue else { return }
@@ -172,6 +194,14 @@ final class ProjectStore {
     var isExportPanelPresented = false
     var isExporting = false
     var lastExportSummary: String?
+    /// 最近一次导出的结构化结果。导出完成后由 `performExport` 设置；
+    /// `ContentView` 据此 sheet 弹出 `ExportSummaryView`。
+    var lastExportResult: ExportResult?
+    /// 实时导出进度，主要给"下载原图 N/M / 写入相册 / 清理"等阶段提供进度条。
+    var exportProgress: ExportProgress?
+    /// Photos App 路径写入前的二次确认弹窗状态。`true` = 弹窗显示中。
+    var isAwaitingPhotosWriteConfirmation: Bool = false
+    private var pendingPhotosWriteContinuation: CheckedContinuation<Bool, Never>?
 
     private var hasBootstrapped = false
     private var isImportMonitoringStarted = false
@@ -190,13 +220,16 @@ final class ProjectStore {
     private var manifestSaveTask: Task<Void, Never>?
     private var localScoringTask: Task<Void, Never>?
     private var cachePreparationTask: Task<Void, Never>?
-    private var selectedDisplayWarmupTask: Task<Void, Never>?
     private var groupNameRefreshTask: Task<Void, Never>?
     private let exportOptionsDefaultsKey = "Luma.exportOptions"
 
     init(enableImportMonitoring: Bool = true) {
         self.enableImportMonitoring = enableImportMonitoring
         loadExportSettings()
+        if let raw = UserDefaults.standard.string(forKey: sessionListSortDefaultsKey),
+           let sort = SessionListSort(rawValue: raw) {
+            sessionListSort = sort
+        }
     }
 
     var selectedAsset: MediaAsset? {
@@ -232,16 +265,16 @@ final class ProjectStore {
         return groupLookupCache[selectedGroupID]
     }
 
-    var expeditionImportSessions: [ImportSession] {
-        currentExpedition?.importSessions ?? []
+    var currentImportSessions: [ImportSession] {
+        currentSession?.importSessions ?? []
     }
 
     var importsHubSubtitle: String {
-        guard let exp = currentExpedition else { return "尚未创建导入会话" }
-        if let last = exp.importSessions.last {
-            return "\(exp.name) · \(last.source.displayName)"
+        guard let session = currentSession else { return "尚未创建导入会话" }
+        if let last = session.importSessions.last {
+            return "\(session.name) · \(last.source.displayName)"
         }
-        return "\(exp.name) · 尚未有导入记录"
+        return "\(session.name) · 尚未有导入记录"
     }
 
     var scoredCount: Int {
@@ -317,7 +350,11 @@ final class ProjectStore {
             return visibleBurstGroupsCache
         }
 
-        guard let selectedGroup else { return [] }
+        guard let selectedGroup else {
+            visibleBurstGroupsCacheGroupID = selectedGroupID
+            visibleBurstGroupsCache = []
+            return []
+        }
 
         let sourceSubGroups: [SubGroup]
         if selectedGroup.subGroups.isEmpty {
@@ -401,8 +438,42 @@ final class ProjectStore {
         assets.filter { $0.userDecision == .picked }.count
     }
 
+    var canExportPicked: Bool {
+        pickedAssetsCount > 0
+    }
+
     var archiveCandidatesCount: Int {
         assets.filter { $0.userDecision != .picked }.count
+    }
+
+    /// 当前 session 是否存在源 = 照片 App 的资产。用于决定是否显示「清理源相册」面板。
+    var hasPhotosLibrarySources: Bool {
+        assets.contains { asset in
+            if case .photosLibrary(let id) = asset.source, !id.isEmpty { return true }
+            return false
+        }
+    }
+
+    /// 按当前 `photosCleanupStrategy` 结算：若策略 = `.deleteRejectedOriginals`，返回
+    /// 「源 = 照片 App 且 userDecision = rejected」的数量；否则返回 0。给 UI 预览用。
+    var photosCleanupPlannedCount: Int {
+        guard exportOptions.photosCleanupStrategy == .deleteRejectedOriginals else { return 0 }
+        return assets.reduce(into: 0) { count, asset in
+            guard asset.userDecision == .rejected else { return }
+            if case .photosLibrary(let id) = asset.source, !id.isEmpty {
+                count += 1
+            }
+        }
+    }
+
+    /// 「源 = 照片 App 且 userDecision = rejected」的数量（与策略无关，总体可删上限）。
+    var photosRejectedFromLibraryCount: Int {
+        assets.reduce(into: 0) { count, asset in
+            guard asset.userDecision == .rejected else { return }
+            if case .photosLibrary(let id) = asset.source, !id.isEmpty {
+                count += 1
+            }
+        }
     }
 
     func bootstrap() async {
@@ -448,7 +519,7 @@ final class ProjectStore {
         do {
             guard let projectDirectory = try AppDirectories.projectDirectories().first else { return }
             let data = try Data(contentsOf: AppDirectories.manifestURL(in: projectDirectory))
-            let manifest = try JSONDecoder.lumaDecoder.decode(ExpeditionManifest.self, from: data)
+            let manifest = try JSONDecoder.lumaDecoder.decode(SessionManifest.self, from: data)
             apply(manifest: manifest, in: projectDirectory)
             triggerLocalScoringIfNeeded()
             logger.log("Loaded project \(manifest.name, privacy: .public)")
@@ -493,10 +564,175 @@ final class ProjectStore {
         }
     }
 
+    /// 旧入口（弹 NSAlert 选最近 N 张）。保留供测试与命令行入口；UI 默认走 `presentPhotosImportPicker()`。
     func importPhotosLibrary() async {
         traceEvent("import_requested", category: "import", metadata: ["source": "photos_library"])
         await runImportOperation { progress, snapshot in
             try await self.importManager.importPhotosLibrarySelection(progress: progress, snapshot: snapshot)
+        }
+    }
+
+    /// PRD「Mac · 照片 App」picker：两步式流程，全程用 AppKit NSAlert。
+    ///
+    /// 流程：
+    /// 1. 走 PhotoKit 授权流程（如未授权）。
+    /// 2. 弹 picker NSAlert：用户选 (date preset, smart album, limit)，点继续 / 取消。
+    /// 3. 估算总数和占用（PhotosImportPlanner.estimate）。
+    /// 4. 弹"确认导入 X 张约 Y MB"二次确认 NSAlert。
+    /// 5. 用户确认 → 走 ImportManager。
+    ///
+    /// **为什么走 AppKit 而不是 SwiftUI sheet：** 见 `AppKitPhotosImportPicker` 类型注释。
+    /// 简言之：SwiftUI sheet 内的 view 在 macOS 26 / SwiftUI 7.3 / Swift 6.2 / arm64e 上
+    /// 一旦做异步 state mutation + body 重求值，就有概率撞 PAC failure，5 轮迭代都没修好。
+    func presentPhotosImportPicker() async {
+        guard !isImporting else { return }
+        let authorized = await ensurePhotosLibraryAuthorization()
+        guard authorized else {
+            traceEvent(
+                "photos_import_picker_aborted_no_permission",
+                category: "import",
+                metadata: ["reason": "user_denied_or_restricted"]
+            )
+            return
+        }
+        let initialPlan = PhotosImportPlan.makeDefault()
+        // 在 picker 弹出前一次性拉取用户相册（按修改时间倒序）。规模通常 < 几十个；
+        // 即便上百个，也只是字符串数组，开销可忽略。
+        let userAlbums = await PhotosImportPlanner.userAlbums()
+        // 收集当前 project 所有 sessions 中已导入过的 PHAsset.localIdentifier，用于去重。
+        let excludedIDs = collectImportedPhotosIdentifiers()
+
+        traceEvent(
+            "photos_import_picker_opened",
+            category: "import",
+            metadata: [
+                "plan_id": initialPlan.id.uuidString,
+                "user_albums": String(userAlbums.count),
+                "excluded_ids": String(excludedIDs.count)
+            ]
+        )
+
+        let outcome = AppKitPhotosImportPicker.presentBlocking(
+            initialPlan: initialPlan,
+            userAlbums: userAlbums
+        )
+        switch outcome {
+        case .cancelled:
+            traceEvent(
+                "photos_import_picker_outcome_cancelled",
+                category: "import",
+                metadata: ["plan_id": initialPlan.id.uuidString]
+            )
+            return
+        case .confirmed(let plan):
+            traceEvent(
+                "photos_import_picker_outcome_confirmed",
+                category: "import",
+                metadata: [
+                    "plan_id": plan.id.uuidString,
+                    "date_preset": plan.datePreset.label,
+                    "smart_album": plan.smartAlbum?.rawValue ?? "none",
+                    "user_album": plan.userAlbumLocalIdentifier ?? "none",
+                    "media": plan.mediaTypeFilter.rawValue,
+                    "limit": String(plan.limit),
+                    "dedupe": plan.dedupeAgainstCurrentProject ? "1" : "0"
+                ]
+            )
+
+            let exclusionSet: Set<String> = plan.dedupeAgainstCurrentProject ? excludedIDs : []
+            let estimate = await PhotosImportPlanner.estimate(
+                dateRange: plan.dateRange,
+                smartAlbumSubtype: plan.smartAlbumSubtype,
+                userAlbumLocalIdentifier: plan.userAlbumLocalIdentifier,
+                mediaTypeFilter: plan.mediaTypeFilter,
+                limit: plan.limit,
+                excludedLocalIdentifiers: exclusionSet
+            )
+            traceEvent(
+                "photos_import_picker_estimate_ended",
+                category: "import",
+                metadata: [
+                    "plan_id": plan.id.uuidString,
+                    "total": String(estimate.totalAssetCount),
+                    "deduped": String(estimate.dedupedSkippedCount),
+                    "cloud_only": String(estimate.cloudOnlyCount),
+                    "bytes": String(estimate.estimatedDiskBytes)
+                ]
+            )
+
+            let confirmed = AppKitPhotosImportPicker.presentEstimateConfirmation(estimate: estimate)
+            guard confirmed else {
+                traceEvent(
+                    "photos_import_picker_estimate_declined",
+                    category: "import",
+                    metadata: ["plan_id": plan.id.uuidString]
+                )
+                return
+            }
+
+            await confirmPhotosImport(plan, excludedLocalIdentifiers: exclusionSet)
+        }
+    }
+
+    /// 遍历当前 project 全部 sessions，收集所有 source = .photosLibrary 的资产 localIdentifier。
+    /// 用于 picker 的"跳过本项目已导入过"去重。
+    private func collectImportedPhotosIdentifiers() -> Set<String> {
+        var ids: Set<String> = []
+        for session in sessions {
+            for asset in session.assets {
+                if case .photosLibrary(let localIdentifier) = asset.source {
+                    ids.insert(localIdentifier)
+                }
+            }
+        }
+        return ids
+    }
+
+    /// 同步触发授权对话框（如果是 .notDetermined），返回最终是否拿到读权限。
+    /// 写入用 picker → 提交 → ImportManager 路径会再请求一次（写权限），这里只解决读。
+    private func ensurePhotosLibraryAuthorization() async -> Bool {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        if status == .authorized || status == .limited {
+            return true
+        }
+        if status == .denied || status == .restricted {
+            // 已经被拒，没必要再触发系统对话框；直接告失败。UI 层后续可以提示用户去设置里改。
+            return false
+        }
+        let resolved: PHAuthorizationStatus = await withCheckedContinuation { continuation in
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
+                continuation.resume(returning: newStatus)
+            }
+        }
+        return resolved == .authorized || resolved == .limited
+    }
+
+    /// Picker 用户在估算确认 alert 上点「导入」后由 `presentPhotosImportPicker()` 内部调用。
+    /// 仍标 `internal`（非 private）以便测试和潜在的命令行入口直接调用。
+    func confirmPhotosImport(
+        _ plan: PhotosImportPlan,
+        excludedLocalIdentifiers: Set<String> = []
+    ) async {
+        traceEvent(
+            "import_requested",
+            category: "import",
+            metadata: [
+                "source": "photos_library",
+                "limit": String(plan.limit),
+                "date_preset": plan.datePreset.label,
+                "smart_album": plan.smartAlbumSubtype.map { String($0.rawValue) } ?? "none",
+                "user_album": plan.userAlbumLocalIdentifier ?? "none",
+                "media": plan.mediaTypeFilter.rawValue,
+                "excluded": String(excludedLocalIdentifiers.count)
+            ]
+        )
+        await runImportOperation { progress, snapshot in
+            try await self.importManager.importPhotosLibrary(
+                plan: plan,
+                excludedLocalIdentifiers: excludedLocalIdentifiers,
+                progress: progress,
+                snapshot: snapshot
+            )
         }
     }
 
@@ -519,6 +755,14 @@ final class ProjectStore {
         traceEvent("performance_diagnostics_closed", category: "diagnostics")
     }
 
+    /// 返回首页 Session 列表前先落盘，再清空内存中的当前项目。
+    func leaveProjectToSessionList() {
+        traceEvent("leave_project_to_session_list", category: "project")
+        persistManifestImmediatelyIfPossible()
+        clearCurrentProject()
+        refreshProjectSummaries()
+    }
+
     func openProject(_ summary: ProjectSummary) {
         let startedAt = ProcessInfo.processInfo.systemUptime
         do {
@@ -527,7 +771,6 @@ final class ProjectStore {
             refreshProjectSummaries()
             triggerLocalScoringIfNeeded()
             isProjectLibraryPresented = false
-            currentSection = .culling
             traceMetric(
                 "project_opened",
                 category: "project",
@@ -590,17 +833,27 @@ final class ProjectStore {
     func refreshProjectSummaries() {
         do {
             let directories = try AppDirectories.projectDirectories()
-            projectSummaries = directories.map { directory in
+            let raw: [ProjectSummary] = directories.map { directory in
                 do {
                     let manifest = try loadManifest(at: directory)
+                    let assets = manifest.session.assets
+                    let decided = assets.filter { $0.userDecision != .pending }.count
+                    let exportJobs = manifest.session.exportJobs
+                    let lastExport = exportJobs.compactMap(\.completedAt).max()
                     return ProjectSummary(
                         id: directory,
                         directory: directory,
                         name: manifest.name,
                         createdAt: manifest.createdAt,
+                        updatedAt: manifest.session.updatedAt,
                         coverImageURL: coverImageURL(from: manifest),
-                        state: .ready(assetCount: manifest.assets.count, groupCount: manifest.groups.count),
-                        isCurrent: urlsReferToSameLocation(directory, currentProjectDirectory)
+                        state: .ready(assetCount: assets.count, groupCount: manifest.session.groups.count),
+                        isCurrent: urlsReferToSameLocation(directory, currentProjectDirectory),
+                        decidedCount: decided,
+                        totalAssetCount: assets.count,
+                        lastExportedAt: lastExport,
+                        exportJobCount: exportJobs.count,
+                        isArchived: manifest.session.isArchived ?? false
                     )
                 } catch {
                     let values = try? directory.resourceValues(forKeys: [.creationDateKey])
@@ -609,21 +862,70 @@ final class ProjectStore {
                         directory: directory,
                         name: directory.lastPathComponent,
                         createdAt: values?.creationDate ?? .distantPast,
+                        updatedAt: values?.creationDate ?? .distantPast,
                         coverImageURL: nil,
                         state: .unavailable(reason: error.localizedDescription),
-                        isCurrent: urlsReferToSameLocation(directory, currentProjectDirectory)
+                        isCurrent: urlsReferToSameLocation(directory, currentProjectDirectory),
+                        decidedCount: 0,
+                        totalAssetCount: 0,
+                        lastExportedAt: nil,
+                        exportJobCount: 0,
+                        isArchived: false
                     )
                 }
             }
+            projectSummaries = sessionListSort.sort(raw)
         } catch {
             projectSummaries = []
             lastErrorMessage = error.localizedDescription
         }
     }
 
-    private func coverImageURL(from manifest: ExpeditionManifest) -> URL? {
+    /// 软归档：写 manifest 字段；保留磁盘项目，列表里下沉。
+    func setArchive(_ summary: ProjectSummary, archived: Bool) {
+        do {
+            // 当前正在打开的项目可直接改内存 + scheduleManifestSave。
+            if urlsReferToSameLocation(summary.directory, currentProjectDirectory),
+               let i = activeSessionIndex {
+                sessions[i].isArchived = archived
+                sessions[i].archivedAt = archived ? .now : nil
+                sessions[i].updatedAt = .now
+                scheduleManifestSave()
+            } else {
+                // 否则直接读盘改盘。
+                var manifest = try loadManifest(at: summary.directory)
+                manifest.session.isArchived = archived
+                manifest.session.archivedAt = archived ? .now : nil
+                manifest.session.updatedAt = .now
+                let url = AppDirectories.manifestURL(in: summary.directory)
+                let data = try JSONEncoder.lumaEncoder.encode(manifest)
+                try data.write(to: url, options: [.atomic])
+            }
+            refreshProjectSummaries()
+            traceEvent(
+                "session_archive_toggled",
+                category: "project",
+                metadata: [
+                    "project_name": summary.name,
+                    "archived": archived ? "1" : "0"
+                ]
+            )
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    /// 改变排序后立即重排已有 summaries（不重读盘）。
+    func updateSessionListSort(_ sort: SessionListSort) {
+        sessionListSort = sort
+        projectSummaries = sort.sort(projectSummaries)
+        UserDefaults.standard.set(sort.rawValue, forKey: sessionListSortDefaultsKey)
+        traceEvent("session_list_sort_changed", category: "project", metadata: ["sort": sort.rawValue])
+    }
+
+    private func coverImageURL(from manifest: SessionManifest) -> URL? {
         let assets = manifest.assets
-        if let coverID = manifest.expedition.coverAssetID,
+        if let coverID = manifest.session.coverAssetID,
            let cover = assets.first(where: { $0.id == coverID }) {
             return cover.primaryDisplayURL
         }
@@ -658,10 +960,12 @@ final class ProjectStore {
 
     func selectGroup(_ groupID: UUID?) {
         let startedAt = ProcessInfo.processInfo.systemUptime
-        selectedDisplayWarmupTask?.cancel()
         selectedGroupID = groupID
-        if let first = visibleAssets.first {
-            selectedAssetID = first.id
+        // 用右栏 cell 顺序而不是 visibleAssets 顺序选第一张：
+        // 1) burst 在前的组会让中央自动进入连拍网格预览（PRD 方案丁的默认行为）；
+        // 2) 右栏第一个 cell 自然被高亮，避免「右栏没跟着切组」的视觉错觉。
+        if let firstCell = visibleSmartGroupCells.first {
+            selectedAssetID = firstCell.coverAsset.id
         } else {
             selectedAssetID = nil
         }
@@ -682,45 +986,13 @@ final class ProjectStore {
     func selectAsset(_ assetID: UUID) {
         let startedAt = ProcessInfo.processInfo.systemUptime
         selectedAssetID = assetID
-        if displayMode == .single {
-            selectedDisplayWarmupTask?.cancel()
-            scheduleFocusedAssetCachePreparation()
-        } else {
-            scheduleSelectedAssetDisplayWarmup(for: assetID)
-        }
+        scheduleFocusedAssetCachePreparation()
         traceMetric(
             "asset_selected",
             category: "interaction",
             startedAt: startedAt,
-            metadata: [
-                "asset_id": assetID.uuidString,
-                "mode": displayMode.rawValue
-            ]
+            metadata: ["asset_id": assetID.uuidString]
         )
-    }
-
-    func setDisplayMode(_ mode: DisplayMode) {
-        let startedAt = ProcessInfo.processInfo.systemUptime
-        guard mode == .grid || !visibleAssets.isEmpty else { return }
-        if mode == .single, selectedAsset == nil {
-            selectedAssetID = visibleAssets.first?.id
-        }
-        if mode == .single {
-            selectedDisplayWarmupTask?.cancel()
-        }
-        displayMode = mode
-        scheduleRelevantCachePreparation()
-        traceMetric(
-            "display_mode_changed",
-            category: "interaction",
-            startedAt: startedAt,
-            metadata: ["display_mode": mode.rawValue]
-        )
-    }
-
-    func toggleDisplayMode() {
-        let nextMode: DisplayMode = displayMode == .grid ? .single : .grid
-        setDisplayMode(nextMode)
     }
 
     func moveSelection(by delta: Int) {
@@ -731,9 +1003,7 @@ final class ProjectStore {
         let currentIndex = currentAssets.firstIndex(where: { $0.id == selectedAssetID }) ?? 0
         let nextIndex = min(max(currentIndex + delta, 0), currentAssets.count - 1)
         selectedAssetID = currentAssets[nextIndex].id
-        if displayMode == .single {
-            scheduleFocusedAssetCachePreparation()
-        }
+        scheduleFocusedAssetCachePreparation()
         traceMetric(
             "selection_moved",
             category: "interaction",
@@ -794,20 +1064,11 @@ final class ProjectStore {
         updateRating(for: selectedAssetID, rating: nil)
     }
 
-    func selectRecommendedInCurrentScope() {
-        let targetAssets = selectedGroup.map { group in
-            assets.filter { group.assets.contains($0.id) }
-        } ?? assets
-
-        let recommended = targetAssets.filter { $0.aiScore?.recommended == true }
-        for asset in recommended {
-            updateDecision(for: asset.id, decision: .picked)
-        }
-        traceEvent(
-            "recommended_assets_selected",
-            category: "culling",
-            metadata: ["count": String(recommended.count)]
-        )
+    /// 当前 Session 总进度：已决策 / 总数。
+    var sessionDecisionProgress: (decided: Int, total: Int) {
+        let total = assets.count
+        let decided = assets.filter { $0.userDecision != .pending }.count
+        return (decided, total)
     }
 
     func jumpToNextGroup() {
@@ -818,6 +1079,45 @@ final class ProjectStore {
             selectGroup(groups[nextIndex].id)
         } else {
             selectGroup(groups.first?.id)
+        }
+    }
+
+    func jumpToPreviousGroup() {
+        guard !groups.isEmpty else { return }
+        if let selectedGroupID,
+           let currentIndex = groups.firstIndex(where: { $0.id == selectedGroupID }) {
+            let nextIndex = (currentIndex - 1 + groups.count) % groups.count
+            selectGroup(groups[nextIndex].id)
+        } else {
+            selectGroup(groups.last?.id)
+        }
+    }
+
+    /// 选片页左栏「All Photos」概览：`selectedGroupID = nil` 时右栏展示整个 session 的资产。
+    func selectAllPhotosOverview() {
+        selectGroup(nil)
+    }
+
+    /// 选片页右栏「Smart Group 全部图（Burst 折叠为单 cell）」。
+    /// - 单图（subGroup.count == 1 / 不属于任何 subGroup）→ `.single`。
+    /// - 多图 burst → `.burst`，UI 上以代表图 + 角标显示。
+    var visibleSmartGroupCells: [SmartGroupCell] {
+        let bursts = visibleBurstGroups
+        if bursts.isEmpty {
+            return visibleAssets.map { .single($0) }
+        }
+        return bursts.map { burst in
+            burst.count == 1 ? .single(burst.assets[0]) : .burst(burst)
+        }
+    }
+
+    /// 选中某个右栏 cell：单图直接选中，连拍组选中其代表图（中央会切到 burst 网格）。
+    func selectSmartGroupCell(_ cell: SmartGroupCell) {
+        switch cell {
+        case .single(let asset):
+            selectAsset(asset.id)
+        case .burst(let burst):
+            selectAsset(burst.coverAsset.id)
         }
     }
 
@@ -875,6 +1175,18 @@ final class ProjectStore {
 
         isExporting = true
         lastExportSummary = nil
+        exportProgress = ExportProgress(phase: .preparing, completed: 0, total: 0, currentName: nil)
+
+        // 写 Photos 路径：弹一次确认，给用户最后一次"我真的要写入照片库"的机会。
+        if exportOptions.destination == .photosApp {
+            let confirmed = await requestPhotosWriteConfirmation()
+            if !confirmed {
+                traceEvent("photos_write_cancelled_by_user", category: "export")
+                isExporting = false
+                exportProgress = nil
+                return
+            }
+        }
 
         do {
             traceEvent(
@@ -891,6 +1203,50 @@ final class ProjectStore {
                 throw LumaError.configurationInvalid("导出配置不完整。")
             }
 
+            // Photos 源 → Folder/Lightroom：导出阶段才按需把原图从 PhotoKit / iCloud 拉到 raw/。
+            // Photos App 目标本身能复用 PHAsset，无需此步。
+            let pickedAssets = assets.filter { asset in
+                guard asset.userDecision == .picked else { return false }
+                if let only = exportOptions.onlyAssetIDs { return only.contains(asset.id) }
+                return true
+            }
+            if exportOptions.destination != .photosApp,
+               let projectDirectory = currentProjectDirectory,
+               pickedAssets.contains(where: { asset in
+                   asset.rawURL == nil
+                       && {
+                           if case .photosLibrary(let id) = asset.source { return !id.isEmpty }
+                           return false
+                       }()
+               }) {
+                exportProgress = ExportProgress(phase: .fetchingOriginals, completed: 0, total: 0, currentName: nil)
+                let rawDirectory = projectDirectory.appendingPathComponent("raw", isDirectory: true)
+                let fetched = try await PhotosOriginalFetcher.fetchOriginals(
+                    for: pickedAssets,
+                    rawDirectory: rawDirectory,
+                    progress: { [weak self] completed, total, name in
+                        Task { @MainActor in
+                            self?.exportProgress = ExportProgress(
+                                phase: .fetchingOriginals,
+                                completed: completed,
+                                total: total,
+                                currentName: name
+                            )
+                        }
+                    }
+                )
+                if !fetched.isEmpty, let idx = activeSessionIndex {
+                    for (assetID, url) in fetched {
+                        if let assetIdx = sessions[idx].assets.firstIndex(where: { $0.id == assetID }) {
+                            sessions[idx].assets[assetIdx].rawURL = url
+                        }
+                    }
+                    sessions[idx].updatedAt = .now
+                    invalidateDerivedState()
+                }
+            }
+
+            exportProgress = ExportProgress(phase: .writing, completed: 0, total: pickedAssets.count, currentName: nil)
             let result = try await adapter.export(assets: assets, groups: groups, options: exportOptions)
             let archiveSummary = try await processRejectedAssetsAfterExport()
             saveExportSettings()
@@ -899,14 +1255,17 @@ final class ProjectStore {
             let archiveSuffix = archiveSummary.map { "；\($0)" } ?? ""
             lastExportSummary = "导出 \(result.exportedCount) 张到 \(result.destinationDescription)\(archiveSuffix)"
             lastSummaryStatus = lastExportSummary
+            // 结构化结果：触发新版导出完成摘要 sheet（替代 alert）。
+            lastExportResult = result
 
-            if let idx = activeExpeditionIndex {
+            if let idx = activeSessionIndex {
                 let pickedIDs = assets.filter { $0.userDecision == .picked }.map(\.id)
+                let hasFailures = !result.failures.isEmpty
                 let job = ExportJob(
                     id: UUID(),
                     createdAt: Date(),
                     completedAt: .now,
-                    status: .completed,
+                    status: hasFailures ? .failed : .completed,
                     options: exportOptions,
                     targetAssetIDs: pickedIDs,
                     exportedCount: result.exportedCount,
@@ -914,10 +1273,15 @@ final class ProjectStore {
                     speedBytesPerSecond: nil,
                     estimatedSecondsRemaining: nil,
                     destinationDescription: result.destinationDescription,
-                    lastError: nil
+                    lastError: hasFailures ? "\(result.failures.count) 个文件失败" : nil,
+                    cleanedCount: result.cleanedCount,
+                    cleanupCancelledCount: result.cleanupCancelledCount,
+                    albumDescription: result.albumDescription,
+                    failures: result.failures
                 )
-                expeditions[idx].exportJobs.append(job)
-                expeditions[idx].updatedAt = .now
+                sessions[idx].exportJobs.append(job)
+                sessions[idx].updatedAt = .now
+                scheduleManifestSave()
             }
             traceMetric(
                 "export_completed",
@@ -925,7 +1289,11 @@ final class ProjectStore {
                 startedAt: startedAt,
                 metadata: [
                     "destination": exportOptions.destination.rawValue,
-                    "exported_count": String(result.exportedCount)
+                    "exported_count": String(result.exportedCount),
+                    "failed_count": String(result.failedCount),
+                    "cleaned_count": String(result.cleanedCount),
+                    "cleanup_cancelled_count": String(result.cleanupCancelledCount),
+                    "photos_cleanup_strategy": exportOptions.photosCleanupStrategy.rawValue,
                 ]
             )
         } catch {
@@ -933,6 +1301,69 @@ final class ProjectStore {
         }
 
         isExporting = false
+        exportProgress = nil
+        // 重试一次后清空 onlyAssetIDs，下次走全量导出。
+        exportOptions.onlyAssetIDs = nil
+    }
+
+    /// 弹出 Photos 写入前的二次确认。挂起到用户在 sheet/alert 上点了「确认」或「取消」。
+    @MainActor
+    private func requestPhotosWriteConfirmation() async -> Bool {
+        // 已在确认中：拒绝并发请求。
+        if isAwaitingPhotosWriteConfirmation { return false }
+        isAwaitingPhotosWriteConfirmation = true
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            self.pendingPhotosWriteContinuation = continuation
+        }
+    }
+
+    /// 用户在写入前确认弹窗里点击「确认/取消」时由 UI 调用。
+    func resolvePhotosWriteConfirmation(_ accepted: Bool) {
+        guard isAwaitingPhotosWriteConfirmation else { return }
+        isAwaitingPhotosWriteConfirmation = false
+        let continuation = pendingPhotosWriteContinuation
+        pendingPhotosWriteContinuation = nil
+        continuation?.resume(returning: accepted)
+    }
+
+    /// 关闭导出完成摘要 sheet。
+    func dismissExportResult() {
+        lastExportResult = nil
+        lastExportSummary = nil
+    }
+
+    /// 仅重试失败项：把上次失败的 assetID 写到 `onlyAssetIDs`，重新打开导出面板让用户复用上次配置。
+    func retryFailedExports() {
+        guard let result = lastExportResult, !result.failures.isEmpty else { return }
+        exportOptions.onlyAssetIDs = Set(result.failures.map(\.assetID))
+        lastExportResult = nil
+        lastExportSummary = nil
+        traceEvent(
+            "export_retry_failed_only",
+            category: "export",
+            metadata: ["count": String(result.failures.count)]
+        )
+        isExportPanelPresented = true
+    }
+
+    /// 在访达里揭示上次导出的目标目录或路径。
+    func revealLastExportDestination() {
+        guard let result = lastExportResult else { return }
+        if let url = result.destinationURL {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+        traceEvent(
+            "export_reveal_destination",
+            category: "export",
+            metadata: ["has_url": result.destinationURL != nil ? "1" : "0"]
+        )
+    }
+
+    /// 跳转到系统照片 App。
+    func openPhotosApp() {
+        guard let url = URL(string: "photos://") else { return }
+        NSWorkspace.shared.open(url)
+        traceEvent("export_open_photos", category: "export")
     }
 
     private func runImportOperation(
@@ -1041,6 +1472,45 @@ final class ProjectStore {
                 self?.handleDetectedImportSource(source)
             }
         }
+        // 周期刷新 detectedImportSources，让"iPhone 已连接"等菜单状态可视化。
+        Task { @MainActor [weak self] in
+            while let self {
+                self.detectedImportSources = await ImportSourceMonitor.detectSources()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    /// 是否检测到至少一台已解锁可读的 iPhone/iPad（USB 直连）。
+    var hasConnectedIPhone: Bool {
+        detectedImportSources.contains { source in
+            if case .iPhone = source { return true }
+            return false
+        }
+    }
+
+    /// 是否检测到 SD 卡相关挂载。
+    var hasConnectedSDCard: Bool {
+        detectedImportSources.contains { source in
+            if case .sdCard = source { return true }
+            return false
+        }
+    }
+
+    /// 已检测到的 iPhone 设备名（用于菜单二级标题）。
+    var connectedIPhoneNames: [String] {
+        detectedImportSources.compactMap { source in
+            if case .iPhone(_, let name) = source { return name }
+            return nil
+        }
+    }
+
+    /// 已检测到的 SD 卡显示名。
+    var connectedSDCardNames: [String] {
+        detectedImportSources.compactMap { source in
+            if case .sdCard(_, let name) = source { return name }
+            return nil
+        }
     }
 
     private func handleDetectedImportSource(_ source: ImportSourceDescriptor) {
@@ -1098,33 +1568,36 @@ final class ProjectStore {
         }
     }
 
-    private func apply(manifest: ExpeditionManifest, in directory: URL) {
+    private func apply(manifest: SessionManifest, in directory: URL) {
         currentProjectDirectory = directory
         currentManifestID = manifest.id
-        var expedition = manifest.expedition
-        if expedition.id != manifest.id {
-            expedition = Expedition(
+        var session = manifest.session
+        if session.id != manifest.id {
+            session = Session(
                 id: manifest.id,
-                name: expedition.name,
-                createdAt: expedition.createdAt,
+                name: session.name,
+                createdAt: session.createdAt,
                 updatedAt: .now,
-                location: expedition.location,
-                tags: expedition.tags,
-                coverAssetID: expedition.coverAssetID,
-                assets: expedition.assets,
-                groups: expedition.groups,
-                importSessions: expedition.importSessions,
-                editingSessions: expedition.editingSessions,
-                exportJobs: expedition.exportJobs
+                location: session.location,
+                tags: session.tags,
+                coverAssetID: session.coverAssetID,
+                assets: session.assets,
+                groups: session.groups,
+                importSessions: session.importSessions,
+                editingSessions: session.editingSessions,
+                exportJobs: session.exportJobs
             )
         }
-        expedition.assets = expedition.assets.sorted { $0.metadata.captureDate < $1.metadata.captureDate }
-        expedition.updatedAt = .now
-        expeditions = [expedition]
-        activeExpeditionID = expedition.id
+        session.assets = session.assets.sorted { $0.metadata.captureDate < $1.metadata.captureDate }
+        session.updatedAt = .now
+        sessions = [session]
+        activeSessionID = session.id
+        // sessions 直接赋值不会触发 assets/groups setter，必须手动 invalidate
+        // 否则 ensureDerivedState 读到的还是上一次（或 bootstrap 时空）的 lookup cache，
+        // 导致 selectedGroup/visibleAssets/visibleBurstGroups 全部失效。
+        invalidateDerivedState()
         selectedGroupID = nil
         selectedAssetID = assets.first?.id
-        displayMode = .grid
         localRejectedCount = assets.filter(\.isTechnicallyRejected).count
         cachePreparationTask?.cancel()
         ThumbnailCache.shared.invalidateAll()
@@ -1133,14 +1606,28 @@ final class ProjectStore {
         scheduleDeferredGroupNameRefreshIfNeeded()
     }
 
+    private func persistManifestImmediatelyIfPossible() {
+        guard let currentProjectDirectory, let i = activeSessionIndex else { return }
+        manifestSaveTask?.cancel()
+        sessions[i].updatedAt = .now
+        let manifest = SessionManifest(id: currentManifestID, session: sessions[i])
+        let manifestURL = AppDirectories.manifestURL(in: currentProjectDirectory)
+        do {
+            let data = try JSONEncoder.lumaEncoder.encode(manifest)
+            try data.write(to: manifestURL, options: [.atomic])
+        } catch {
+            logger.error("Failed to persist manifest before leaving project: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     private func clearCurrentProject() {
         currentProjectDirectory = nil
         currentManifestID = UUID()
-        expeditions = []
-        activeExpeditionID = nil
+        sessions = []
+        activeSessionID = nil
+        invalidateDerivedState()
         selectedGroupID = nil
         selectedAssetID = nil
-        displayMode = .grid
         importProgress = nil
         isLocalScoring = false
         localScoringCompleted = 0
@@ -1194,17 +1681,25 @@ final class ProjectStore {
         return group.name.range(of: pattern, options: .regularExpression) != nil
     }
 
-    private func loadManifest(at directory: URL) throws -> ExpeditionManifest {
+    private func loadManifest(at directory: URL) throws -> SessionManifest {
         let data = try Data(contentsOf: AppDirectories.manifestURL(in: directory))
-        return try JSONDecoder.lumaDecoder.decode(ExpeditionManifest.self, from: data)
+        let manifest = try JSONDecoder.lumaDecoder.decode(SessionManifest.self, from: data)
+
+        // 防御：如果磁盘上的 manifest 版本比当前可识别版本更高（用户从更新版 Luma 回退），
+        // 不强行加载，给一个友好的报错让用户去升级；不会因此把 manifest 写花。
+        if manifest.schemaVersion > SessionManifest.currentSchemaVersion {
+            throw LumaError.persistenceFailed(
+                "项目 manifest 版本（v\(manifest.schemaVersion)）高于当前 Luma 可识别（v\(SessionManifest.currentSchemaVersion)）。请升级 Luma 后重试。"
+            )
+        }
+        return manifest
     }
 
+    /// 选片页同时显示「中央大图 + 右栏 Smart Group 缩略图网格」，所以预热策略=
+    /// 1）保证当前选中张的大图就绪 + 邻图预取；2）右栏可见缩略图全部 trim/preheat。
     private func scheduleRelevantCachePreparation() {
-        if displayMode == .single {
-            scheduleFocusedAssetCachePreparation()
-        } else {
-            scheduleGridThumbnailWarmup()
-        }
+        scheduleFocusedAssetCachePreparation()
+        scheduleGridThumbnailWarmup()
     }
 
     private func scheduleGridThumbnailWarmup() {
@@ -1238,23 +1733,13 @@ final class ProjectStore {
         }
     }
 
-    private func scheduleSelectedAssetDisplayWarmup(for assetID: UUID) {
-        selectedDisplayWarmupTask?.cancel()
-        selectedDisplayWarmupTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(40))
-            guard let self, !Task.isCancelled, self.displayMode == .grid, self.selectedAssetID == assetID else { return }
-            guard let asset = self.assetLookupCache[assetID] else { return }
-            DisplayImageCache.shared.preheat(assets: [asset])
-        }
-    }
-
     private func scheduleManifestSave() {
         guard let currentProjectDirectory else { return }
         manifestSaveTask?.cancel()
 
-        guard let i = activeExpeditionIndex else { return }
-        expeditions[i].updatedAt = .now
-        let manifest = ExpeditionManifest(id: currentManifestID, expedition: expeditions[i])
+        guard let i = activeSessionIndex else { return }
+        sessions[i].updatedAt = .now
+        let manifest = SessionManifest(id: currentManifestID, session: sessions[i])
         let manifestURL = AppDirectories.manifestURL(in: currentProjectDirectory)
 
         manifestSaveTask = Task { [manifestURL, manifest] in
@@ -1393,7 +1878,8 @@ final class ProjectStore {
         let wasTechnicallyRejected = assets[index].isTechnicallyRejected
         assets[index].issues = assessment.issues
         assets[index].aiScore = AIScore(
-            provider: "local-coreml",
+            // 真实算法是 Core Image + Vision 的本地启发式打分，并非 CoreML 模型；改名以避免误解。
+            provider: "local-heuristic",
             scores: assessment.subscores,
             overall: assessment.score,
             comment: assessment.comment,
@@ -1427,6 +1913,20 @@ final class ProjectStore {
                 return updated
             }
         }
+    }
+
+    /// SettingsView 直接调用：保存当前 exportOptions 的"默认值"部分（导出目录 / LR / 未选处理）。
+    func saveDefaultsExplicitly() {
+        saveExportSettings()
+        traceEvent(
+            "export_defaults_saved",
+            category: "settings",
+            metadata: [
+                "rejected_handling": exportOptions.rejectedHandling.rawValue,
+                "has_output_path": exportOptions.outputPath != nil ? "1" : "0",
+                "has_lr_path": exportOptions.lrAutoImportFolder != nil ? "1" : "0"
+            ]
+        )
     }
 
     private func saveExportSettings() {
@@ -1494,7 +1994,6 @@ final class ProjectStore {
 
         var context: [String: String] = [
             "project_name": projectName,
-            "display_mode": displayMode.rawValue,
             "asset_count": String(assets.count),
             "group_count": String(groups.count),
             "visible_count": String(selectedGroup?.assets.count ?? assets.count),

@@ -29,12 +29,12 @@ private actor ImportConnectionTracker {
 }
 
 struct ImportedProject {
-    let manifest: ExpeditionManifest
+    let manifest: SessionManifest
     let directory: URL
 }
 
 struct ImportedProjectSnapshot {
-    let manifest: ExpeditionManifest
+    let manifest: SessionManifest
     let directory: URL
     let isFinal: Bool
 }
@@ -51,7 +51,7 @@ struct ImportManager: Sendable {
         try? ImportSessionStore.loadRecoverableSessions().first
     }
 
-    func loadManifest(for session: ImportSession) throws -> ExpeditionManifest {
+    func loadManifest(for session: ImportSession) throws -> SessionManifest {
         guard let projectDirectory = session.projectDirectory else {
             throw LumaError.importFailed("导入会话缺少项目目录。")
         }
@@ -136,6 +136,31 @@ struct ImportManager: Sendable {
             displayName: displayName
         )
         return try await importFromSource(source, progress: progress, snapshot: snapshot)
+    }
+
+    /// PRD「Mac 照片 App」picker：UI 已选好筛选维度，直接走 PhotosLibraryAdapter。
+    /// `excludedLocalIdentifiers` 由 ProjectStore 在唤起 picker 时收集（当前 project 已导入过的 PHAsset）。
+    func importPhotosLibrary(
+        plan: PhotosImportPlan,
+        excludedLocalIdentifiers: Set<String> = [],
+        progress: @escaping @Sendable (ImportProgress) -> Void,
+        snapshot: @escaping @Sendable (ImportedProjectSnapshot) -> Void
+    ) async throws -> ImportedProject {
+        let displayName = plan.displayName
+        let source = ImportSourceDescriptor.photosLibrary(
+            albumLocalIdentifier: plan.userAlbumLocalIdentifier,
+            limit: plan.limit,
+            displayName: displayName
+        )
+        let adapter = PhotosLibraryAdapter(
+            albumLocalIdentifier: plan.userAlbumLocalIdentifier,
+            limit: plan.limit,
+            dateRange: plan.dateRange,
+            smartAlbumSubtype: plan.smartAlbumSubtype,
+            mediaTypeFilter: plan.mediaTypeFilter,
+            excludedLocalIdentifiers: plan.dedupeAgainstCurrentProject ? excludedLocalIdentifiers : []
+        )
+        return try await importFromSource(source, adapter: adapter, progress: progress, snapshot: snapshot)
     }
 
     @MainActor
@@ -266,7 +291,7 @@ struct ImportManager: Sendable {
     private func runImport(
         adapter: any ImportSourceAdapter,
         session: inout ImportSession,
-        existingManifest: ExpeditionManifest?,
+        existingManifest: SessionManifest?,
         progress: @escaping @Sendable (ImportProgress) -> Void,
         snapshot: @escaping @Sendable (ImportedProjectSnapshot) -> Void
     ) async throws -> ImportedProject {
@@ -313,7 +338,7 @@ struct ImportManager: Sendable {
         }
 
         let itemsByResumeKey = Dictionary(uniqueKeysWithValues: discoveredItems.map { ($0.resumeKey, $0) })
-        var manifest: ExpeditionManifest
+        var manifest: SessionManifest
 
         if let existingManifest {
             manifest = existingManifest
@@ -427,16 +452,16 @@ struct ImportManager: Sendable {
                 ]
             )
         )
-        var expedition = manifest.expedition
+        var topSession = manifest.session
         var historySession = session
         historySession.status = .completed
         historySession.completedAt = .now
         historySession.importedAssetIDs = manifest.assets.map(\.id)
         historySession.projectDirectory = nil
         historySession.projectName = nil
-        expedition.importSessions.append(historySession)
-        expedition.updatedAt = .now
-        manifest.expedition = expedition
+        topSession.importSessions.append(historySession)
+        topSession.updatedAt = .now
+        manifest.session = topSession
 
         try Self.saveManifest(manifest, in: projectDirectory)
         snapshot(.init(manifest: manifest, directory: projectDirectory, isFinal: true))
@@ -468,7 +493,7 @@ struct ImportManager: Sendable {
         adapter: any ImportSourceAdapter,
         progress: @escaping @Sendable (ImportProgress) -> Void,
         connectionTracker: ImportConnectionTracker
-    ) async throws -> ExpeditionManifest {
+    ) async throws -> SessionManifest {
         guard let projectDir = session.projectDirectory else {
             throw LumaError.importFailed("导入会话缺少项目目录。")
         }
@@ -547,7 +572,7 @@ struct ImportManager: Sendable {
         }
 
         let manifestID = UUID()
-        return ExpeditionManifest(
+        return SessionManifest(
             id: manifestID,
             name: session.displayProjectName,
             createdAt: session.createdAt,
@@ -557,7 +582,7 @@ struct ImportManager: Sendable {
     }
 
     private func copyPreviewAssets(
-        in manifest: inout ExpeditionManifest,
+        in manifest: inout SessionManifest,
         itemsByResumeKey: [String: DiscoveredItem],
         adapter: any ImportSourceAdapter,
         session: inout ImportSession,
@@ -606,7 +631,7 @@ struct ImportManager: Sendable {
     }
 
     private func copyOriginalAssets(
-        in manifest: inout ExpeditionManifest,
+        in manifest: inout SessionManifest,
         itemsByResumeKey: [String: DiscoveredItem],
         adapter: any ImportSourceAdapter,
         session: inout ImportSession,
@@ -747,14 +772,14 @@ struct ImportManager: Sendable {
         }
     }
 
-    private static func saveManifest(_ manifest: ExpeditionManifest, in directory: URL) throws {
+    private static func saveManifest(_ manifest: SessionManifest, in directory: URL) throws {
         let manifestData = try JSONEncoder.lumaEncoder.encode(manifest)
         try manifestData.write(to: AppDirectories.manifestURL(in: directory), options: [.atomic])
     }
 
-    private static func loadManifest(from directory: URL) throws -> ExpeditionManifest {
+    private static func loadManifest(from directory: URL) throws -> SessionManifest {
         let data = try Data(contentsOf: AppDirectories.manifestURL(in: directory))
-        return try JSONDecoder.lumaDecoder.decode(ExpeditionManifest.self, from: data)
+        return try JSONDecoder.lumaDecoder.decode(SessionManifest.self, from: data)
     }
 
     private static func traceEvent(_ name: String, metadata: [String: String]) {

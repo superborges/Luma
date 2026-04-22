@@ -268,8 +268,8 @@ enum TestFixtures {
         createdAt: Date = makeDate(hour: 9),
         assets: [MediaAsset],
         groups: [PhotoGroup]
-    ) -> ExpeditionManifest {
-        ExpeditionManifest(
+    ) -> SessionManifest {
+        SessionManifest(
             id: UUID(),
             name: name,
             createdAt: createdAt,
@@ -278,12 +278,12 @@ enum TestFixtures {
         )
     }
 
-    static func writeManifest(_ manifest: ExpeditionManifest, in directory: URL) throws {
+    static func writeManifest(_ manifest: SessionManifest, in directory: URL) throws {
         let data = try JSONEncoder.lumaEncoder.encode(manifest)
         try data.write(to: AppDirectories.manifestURL(in: directory), options: [.atomic])
     }
 
-    /// Seeds `ProjectStore` with an in-memory expedition so `assets` / `groups` setters work under @testable.
+    /// Seeds `ProjectStore` with an in-memory session so `assets` / `groups` setters work under @testable.
     @MainActor
     static func seedStore(
         _ store: ProjectStore,
@@ -292,7 +292,7 @@ enum TestFixtures {
         groups: [PhotoGroup] = []
     ) {
         let id = UUID()
-        let expedition = Expedition(
+        let session = Session(
             id: id,
             name: name,
             createdAt: .now,
@@ -306,8 +306,8 @@ enum TestFixtures {
             editingSessions: [],
             exportJobs: []
         )
-        store.expeditions = [expedition]
-        store.activeExpeditionID = id
+        store.sessions = [session]
+        store.activeSessionID = id
         store.currentManifestID = id
     }
 

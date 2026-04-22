@@ -28,6 +28,13 @@ enum ImportSessionStore {
             var session = try JSONDecoder.lumaDecoder.decode(ImportSession.self, from: data)
             guard session.status != .completed else { continue }
 
+            // 孤儿清理：项目目录已被用户或系统删除（比如挪去废纸篓），对应 session 不再可恢复，静默丢弃。
+            if let projectDirectory = session.projectDirectory,
+               !FileManager.default.fileExists(atPath: projectDirectory.path) {
+                try? FileManager.default.removeItem(at: url)
+                continue
+            }
+
             if session.status == .running {
                 session.status = .paused
                 session.phase = .paused

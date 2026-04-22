@@ -21,6 +21,7 @@ struct PerformanceDiagnosticsView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     summarySection
                     traceSection
+                    uiRegistrySection
                     thumbnailSection
                     displaySection
                 }
@@ -95,7 +96,6 @@ struct PerformanceDiagnosticsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 statRow("当前项目", store.projectName)
                 statRow("当前范围", "\(store.visibleAssets.count) 张")
-                statRow("显示模式", store.displayMode == .grid ? "网格" : "单张")
                 statRow("当前选中", store.selectedAsset != nil ? "有" : "无")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -110,6 +110,95 @@ struct PerformanceDiagnosticsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// UI 元素定位面板：列出当前注册到 `UIRegistry` 的所有元素 + 一把 dump 到 trace。
+    /// debug "我点的是哪个 cell" / "右栏 cell 渲染到哪个坐标" 时非常有用。
+    /// 也能用 `Cmd+Shift+D` 快捷键直接 dump。
+    private var uiRegistrySection: some View {
+        let elements = UIRegistry.shared.sortedElements()
+        let inspectorOn = UIRegistry.shared.isInspectorEnabled
+        return GroupBox("UI 元素 (\(elements.count))") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Button(inspectorOn ? "关闭 Inspector Overlay" : "打开 Inspector Overlay") {
+                        UIRegistry.shared.toggleInspector(reason: "diagnostics_panel")
+                    }
+                    .stitchHoverDimming()
+                    Button("Dump 到 trace") {
+                        UITrace.snapshot(reason: "diagnostics_panel")
+                    }
+                    .stitchHoverDimming()
+                    Button("复制报告到剪贴板") {
+                        copyRegistrySnapshotToPasteboard()
+                    }
+                    .stitchHoverDimming()
+                    Spacer()
+                    Text("⌘⇧U Inspector · ⌘⇧D Dump")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+
+                if elements.isEmpty {
+                    Text("尚无元素注册（确保 `.lumaTrack(...)` 已挂上对应视图，且视图已 onAppear）")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(elements, id: \.id) { element in
+                        uiElementRow(element)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func uiElementRow(_ element: UIElementInfo) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(element.id)
+                .font(.system(size: 11, design: .monospaced))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 320, alignment: .leading)
+                .textSelection(.enabled)
+            Text(element.kind)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 64, alignment: .leading)
+            Text(formatRect(element.frameInWindow))
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.vertical, 2)
+        .stitchAdaptiveListRowHover()
+    }
+
+    private func formatRect(_ rect: CGRect) -> String {
+        String(
+            format: "x=%.0f y=%.0f w=%.0f h=%.0f",
+            rect.minX, rect.minY, rect.width, rect.height
+        )
+    }
+
+    private func copyRegistrySnapshotToPasteboard() {
+        let report = UIRegistry.shared.textualReport(contextMetadata: [
+            "project_name": store.projectName,
+            "selected_group_id": store.selectedGroupID?.uuidString ?? "all",
+            "selected_asset_id": store.selectedAssetID?.uuidString ?? "none",
+            "visible_asset_count": String(store.visibleAssets.count)
+        ])
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(report, forType: .string)
+        RuntimeTrace.event(
+            "ui_inspector_report_copied",
+            category: "ui",
+            metadata: [
+                "source": "diagnostics_panel",
+                "element_count": String(UIRegistry.shared.elements.count),
+                "byte_length": String(report.utf8.count)
+            ]
+        )
     }
 
     private var thumbnailSection: some View {

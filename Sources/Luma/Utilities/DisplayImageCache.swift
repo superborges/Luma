@@ -5,6 +5,9 @@ import Foundation
 final class DisplayImageCache {
     static let shared = DisplayImageCache()
 
+    /// 解码策略或 key 格式变更时递增，避免内存里长期命中旧缓存导致中央大图发糊。
+    private static let cacheKeySchema = "display:v4"
+
     private let memoryCache = NSCache<NSString, NSImage>()
     private var cachedKeys: Set<String> = []
     private var inflightLoads: [String: Task<NSImage?, Never>] = [:]
@@ -20,11 +23,11 @@ final class DisplayImageCache {
     }
 
     func cachedImage(for asset: MediaAsset) -> NSImage? {
-        memoryImage(forKey: asset.id.uuidString)
+        memoryImage(forKey: Self.cacheKey(for: asset.id))
     }
 
     func image(for asset: MediaAsset) async -> NSImage? {
-        let key = asset.id.uuidString
+        let key = Self.cacheKey(for: asset.id)
         if let cached = memoryImage(forKey: key) {
             return cached
         }
@@ -39,7 +42,7 @@ final class DisplayImageCache {
 
     func preheat(assets: [MediaAsset]) {
         for asset in assets {
-            let key = asset.id.uuidString
+            let key = Self.cacheKey(for: asset.id)
             if memoryCache.object(forKey: key as NSString) != nil || inflightLoads[key] != nil {
                 continue
             }
@@ -63,7 +66,7 @@ final class DisplayImageCache {
     }
 
     func trim(toRetainAssetIDs retainedAssetIDs: Set<UUID>) {
-        let retainedKeys = Set(retainedAssetIDs.map(\.uuidString))
+        let retainedKeys = Set(retainedAssetIDs.map { Self.cacheKey(for: $0) })
 
         for key in cachedKeys.subtracting(retainedKeys) {
             memoryCache.removeObject(forKey: key as NSString)
@@ -105,6 +108,10 @@ final class DisplayImageCache {
         trimEvictions = 0
     }
 
+    private static func cacheKey(for assetID: UUID) -> String {
+        "\(assetID.uuidString)@\(cacheKeySchema)"
+    }
+
     private func memoryImage(forKey key: String) -> NSImage? {
         let cacheKey = key as NSString
         if let cached = memoryCache.object(forKey: cacheKey) {
@@ -121,13 +128,53 @@ final class DisplayImageCache {
         }
 
         let maxPixelSize = recommendedMaxPixelSize(for: asset)
-        let sourceURL = asset.previewURL ?? asset.rawURL
+        let preview = asset.previewURL
+        let raw = asset.rawURL
+        let thumb = asset.thumbnailURL
+        let photosLibraryID = asset.photosLibraryLocalIdentifier
+        // PhotoKit 兜底「足够清晰」的目标长边：当 disk 解码出来的图比这个还小，就再问一次。
+        let satisfactoryLongEdge = max(maxPixelSize / 2, 1600)
 
         let task = Task<NSImage?, Never> { [weak self] in
             guard let self else { return nil }
-            // Decode off the main thread using a background continuation,
-            // matching the pattern used in ThumbnailCache.
-            let image = await Self.decodeDisplayImage(from: sourceURL, maxPixelSize: maxPixelSize)
+            // 先分别解码 preview（若有）与 raw（若有且不同），取「像素长边更大」的图；
+            // 导入管线里 preview 往往是一张小 JPEG，raw 才是清晰原图——若「首个成功就停」会一直用糊图。
+            var best: (NSImage, Int)? = nil
+            if let p = preview {
+                if let decoded = await Self.decodeDisplayImage(from: p, maxPixelSize: maxPixelSize) {
+                    best = decoded
+                }
+            }
+            if let r = raw, r != preview {
+                if let decoded = await Self.decodeDisplayImage(from: r, maxPixelSize: maxPixelSize) {
+                    if best == nil || decoded.1 > best!.1 {
+                        best = decoded
+                    }
+                }
+            }
+
+            // PhotoKit 兜底：disk 拿不到图（preview/raw 文件缺失），或拿到的图明显太小（preview 是 displayVersion
+            // 之类的 1080 缩略图）。直接按 PHAsset.localIdentifier 再问一次系统，要多大给多大。
+            // 只在 source 是 .photosLibrary 时启用——其他来源（SD 卡 / iPhone / 文件夹）没有 localIdentifier。
+            if let photosLibraryID,
+               (best == nil || best!.1 < satisfactoryLongEdge) {
+                if let phImage = await PhotosKitImageProvider.requestImage(
+                    localIdentifier: photosLibraryID,
+                    targetLongEdge: maxPixelSize
+                ) {
+                    if best == nil || phImage.1 > best!.1 {
+                        best = phImage
+                    }
+                }
+            }
+
+            // 最后一道兜底：本地 thumbnail PNG（400px 左右），保证至少能显示出来。
+            if best == nil, let t = thumb, t != preview, t != raw {
+                if let decoded = await Self.decodeDisplayImage(from: t, maxPixelSize: min(maxPixelSize, 2048)) {
+                    best = decoded
+                }
+            }
+            let image = best?.0
             _ = await MainActor.run {
                 self.inflightLoads.removeValue(forKey: key)
                 if let image {
@@ -143,25 +190,32 @@ final class DisplayImageCache {
         return task
     }
 
-    private nonisolated static func decodeDisplayImage(from sourceURL: URL?, maxPixelSize: Int) async -> NSImage? {
-        await withCheckedContinuation { continuation in
+    /// 返回 `(NSImage, 像素长边)`，便于在 preview / raw 之间选更清晰的。
+    /// CGImage 在后台解码；`NSImage` 在主线程用 `NSBitmapImageRep` 挂接，避免 Retina 下糊成一团。
+    private nonisolated static func decodeDisplayImage(from sourceURL: URL, maxPixelSize: Int) async -> (NSImage, Int)? {
+        let cgImage = await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                guard let url = sourceURL,
-                      let cgImage = EXIFParser.makeThumbnail(from: url, maxPixelSize: maxPixelSize) else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-                continuation.resume(returning: image)
+                let cg = EXIFParser.cgImageForDisplay(at: sourceURL, maxLongEdge: maxPixelSize)
+                continuation.resume(returning: cg)
             }
         }
+        guard let cgImage else { return nil }
+        let longEdge = max(cgImage.width, cgImage.height)
+        let image = await MainActor.run {
+            let rep = NSBitmapImageRep(cgImage: cgImage)
+            let img = NSImage(size: rep.size)
+            img.addRepresentation(rep)
+            return img
+        }
+        return (image, longEdge)
     }
 
+    /// Retina 大屏：长边至少给到「足够清晰」的像素预算；上限 4096 控制内存。
     private func recommendedMaxPixelSize(for asset: MediaAsset) -> Int {
         let sourceMax = max(asset.metadata.imageWidth, asset.metadata.imageHeight)
         if sourceMax > 0 {
-            return min(sourceMax, 2400)
+            return min(max(sourceMax, 2560), 4096)
         }
-        return 2200
+        return 2560
     }
 }

@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class ProjectStoreTests: XCTestCase {
-    func testSelectionFlowUpdatesVisibleAssetsAndDisplayMode() {
+    func testSelectionFlowUpdatesVisibleAssets() {
         let store = ProjectStore()
         let asset1 = TestFixtures.makeAsset(
             baseName: "IMG_1001",
@@ -37,40 +37,104 @@ final class ProjectStoreTests: XCTestCase {
 
         store.moveSelection(by: 10)
         XCTAssertEqual(store.selectedAssetID, asset2.id)
-
-        store.toggleDisplayMode()
-        XCTAssertEqual(store.displayMode, .single)
     }
 
-    func testSelectRecommendedInCurrentScopeMarksOnlyVisibleRecommendedAssets() {
+    func testJumpBetweenGroupsCyclesForwardAndBackward() {
         let store = ProjectStore()
-        let recommendedA = TestFixtures.makeAsset(
-            baseName: "IMG_1101",
-            captureDate: TestFixtures.makeDate(hour: 10),
-            aiScore: TestFixtures.makeAIScore(overall: 92, recommended: true)
-        )
-        let normalA = TestFixtures.makeAsset(
-            baseName: "IMG_1102",
-            captureDate: TestFixtures.makeDate(hour: 10, minute: 1),
-            aiScore: TestFixtures.makeAIScore(overall: 65, recommended: false)
-        )
-        let recommendedB = TestFixtures.makeAsset(
-            baseName: "IMG_1103",
-            captureDate: TestFixtures.makeDate(hour: 10, minute: 2),
-            aiScore: TestFixtures.makeAIScore(overall: 90, recommended: true)
-        )
+        let asset1 = TestFixtures.makeAsset(baseName: "IMG_2A", captureDate: TestFixtures.makeDate(hour: 9))
+        let asset2 = TestFixtures.makeAsset(baseName: "IMG_2B", captureDate: TestFixtures.makeDate(hour: 10))
+        let asset3 = TestFixtures.makeAsset(baseName: "IMG_2C", captureDate: TestFixtures.makeDate(hour: 11))
+        let groupA = TestFixtures.makeGroup(name: "A", assets: [asset1])
+        let groupB = TestFixtures.makeGroup(name: "B", assets: [asset2])
+        let groupC = TestFixtures.makeGroup(name: "C", assets: [asset3])
 
-        let groupA = TestFixtures.makeGroup(name: "Group A", assets: [recommendedA, normalA], recommendedAssets: [recommendedA.id])
-        let groupB = TestFixtures.makeGroup(name: "Group B", assets: [recommendedB], recommendedAssets: [recommendedB.id])
-
-        TestFixtures.seedStore(store, assets: [recommendedA, normalA, recommendedB], groups: [groupA, groupB])
+        TestFixtures.seedStore(store, assets: [asset1, asset2, asset3], groups: [groupA, groupB, groupC])
         store.selectGroup(groupA.id)
 
-        store.selectRecommendedInCurrentScope()
+        store.jumpToNextGroup()
+        XCTAssertEqual(store.selectedGroupID, groupB.id)
 
-        XCTAssertEqual(store.assets.first(where: { $0.id == recommendedA.id })?.userDecision, .picked)
-        XCTAssertEqual(store.assets.first(where: { $0.id == normalA.id })?.userDecision, .pending)
-        XCTAssertEqual(store.assets.first(where: { $0.id == recommendedB.id })?.userDecision, .pending)
+        store.jumpToPreviousGroup()
+        XCTAssertEqual(store.selectedGroupID, groupA.id)
+
+        store.jumpToPreviousGroup()
+        XCTAssertEqual(store.selectedGroupID, groupC.id, "← from first group should wrap to last")
+    }
+
+    func testVisibleSmartGroupCellsFoldsBurstsToSingleRepresentative() {
+        let store = ProjectStore()
+        let single = TestFixtures.makeAsset(baseName: "IMG_3001", captureDate: TestFixtures.makeDate(hour: 9))
+        let burstA = TestFixtures.makeAsset(baseName: "IMG_3010", captureDate: TestFixtures.makeDate(hour: 9, minute: 1))
+        let burstB = TestFixtures.makeAsset(baseName: "IMG_3011", captureDate: TestFixtures.makeDate(hour: 9, minute: 1, second: 1))
+        let burstC = TestFixtures.makeAsset(baseName: "IMG_3012", captureDate: TestFixtures.makeDate(hour: 9, minute: 1, second: 2))
+
+        let group = PhotoGroup(
+            id: UUID(),
+            name: "Mixed",
+            assets: [single.id, burstA.id, burstB.id, burstC.id],
+            subGroups: [
+                SubGroup(id: UUID(), assets: [single.id], bestAsset: nil),
+                SubGroup(id: UUID(), assets: [burstA.id, burstB.id, burstC.id], bestAsset: burstB.id)
+            ],
+            timeRange: single.metadata.captureDate ... burstC.metadata.captureDate,
+            location: nil,
+            groupComment: nil,
+            recommendedAssets: []
+        )
+
+        TestFixtures.seedStore(store, assets: [single, burstA, burstB, burstC], groups: [group])
+        store.selectGroup(group.id)
+
+        let cells = store.visibleSmartGroupCells
+        XCTAssertEqual(cells.count, 2, "single asset + 3-asset burst should fold to two cells")
+
+        var sawSingle = false
+        var sawBurst = false
+        for cell in cells {
+            switch cell {
+            case .single(let asset):
+                XCTAssertEqual(asset.id, single.id)
+                sawSingle = true
+            case .burst(let burst):
+                XCTAssertEqual(burst.count, 3)
+                XCTAssertEqual(burst.coverAsset.id, burstB.id)
+                sawBurst = true
+            }
+        }
+        XCTAssertTrue(sawSingle && sawBurst)
+    }
+
+    func testSelectGroupPicksFirstCellCoverSoBurstAutoOpensInGrid() {
+        // 回归用例：选中第一个 cell 是 burst 的组时，selectedAssetID 必须落到 burst.coverAsset.id。
+        // 否则 selectedBurstContext 会因为命中"非 burst 中的图"而返回 nil，
+        // 导致用户一进入有连拍的组中央却展示成单图，看不到连拍网格预览。
+        let store = ProjectStore()
+        let burstA = TestFixtures.makeAsset(baseName: "IMG_4001", captureDate: TestFixtures.makeDate(hour: 9))
+        let burstB = TestFixtures.makeAsset(baseName: "IMG_4002", captureDate: TestFixtures.makeDate(hour: 9, minute: 0, second: 1))
+        let burstC = TestFixtures.makeAsset(baseName: "IMG_4003", captureDate: TestFixtures.makeDate(hour: 9, minute: 0, second: 2))
+        let single = TestFixtures.makeAsset(baseName: "IMG_4010", captureDate: TestFixtures.makeDate(hour: 9, minute: 5))
+
+        let group = PhotoGroup(
+            id: UUID(),
+            name: "BurstFirst",
+            assets: [burstA.id, burstB.id, burstC.id, single.id],
+            subGroups: [
+                SubGroup(id: UUID(), assets: [burstA.id, burstB.id, burstC.id], bestAsset: burstB.id),
+                SubGroup(id: UUID(), assets: [single.id], bestAsset: nil)
+            ],
+            timeRange: burstA.metadata.captureDate ... single.metadata.captureDate,
+            location: nil,
+            groupComment: nil,
+            recommendedAssets: []
+        )
+
+        TestFixtures.seedStore(store, assets: [burstA, burstB, burstC, single], groups: [group])
+        store.selectGroup(group.id)
+
+        XCTAssertEqual(store.selectedAssetID, burstB.id, "First cell is the burst → selection should land on its cover asset")
+        let context = store.selectedBurstContext
+        XCTAssertNotNil(context, "Cover-asset selection must yield a real burst context so the center area renders the grid")
+        XCTAssertEqual(context?.burst.count, 3)
     }
 
     func testSummaryCountsTechnicalRejectsUnlessAlreadyPicked() {
@@ -157,6 +221,96 @@ final class ProjectStoreTests: XCTestCase {
                 XCTAssertEqual(store.projectName, "Ready Project")
                 XCTAssertEqual(store.selectedAssetID, asset.id)
                 XCTAssertFalse(store.isProjectLibraryPresented)
+            }
+        }
+    }
+
+    func testMarkSelectionPendingResetsDecisionAndAdvances() {
+        let store = ProjectStore()
+        let asset1 = TestFixtures.makeAsset(
+            baseName: "IMG_2001",
+            captureDate: TestFixtures.makeDate(hour: 11),
+            userDecision: .picked
+        )
+        let asset2 = TestFixtures.makeAsset(
+            baseName: "IMG_2002",
+            captureDate: TestFixtures.makeDate(hour: 11, minute: 1),
+            userDecision: .rejected
+        )
+        let group = TestFixtures.makeGroup(name: "Reset", assets: [asset1, asset2])
+        TestFixtures.seedStore(store, assets: [asset1, asset2], groups: [group])
+        store.selectGroup(group.id)
+        store.selectedAssetID = asset1.id
+
+        store.markSelection(.pending)
+
+        XCTAssertEqual(store.assets.first(where: { $0.id == asset1.id })?.userDecision, .pending)
+        XCTAssertEqual(store.selectedAssetID, asset2.id, "Pending mark should advance selection like Pick / Reject")
+    }
+
+    func testProjectSummaryReflectsDecisionAndExportState() throws {
+        try TestFixtures.withTemporaryDirectory { root in
+            try TestFixtures.withAppSupportRootOverride(root) {
+                let store = ProjectStore()
+
+                let picked = TestFixtures.makeAsset(
+                    baseName: "IMG_3001",
+                    captureDate: TestFixtures.makeDate(hour: 9),
+                    aiScore: TestFixtures.makeAIScore(overall: 90, recommended: true),
+                    userDecision: .picked
+                )
+                let pending = TestFixtures.makeAsset(
+                    baseName: "IMG_3002",
+                    captureDate: TestFixtures.makeDate(hour: 9, minute: 1),
+                    aiScore: TestFixtures.makeAIScore(overall: 70)
+                )
+                let group = TestFixtures.makeGroup(name: "Group", assets: [picked, pending])
+
+                let directory = try AppDirectories.createProjectDirectory(
+                    named: "Progress Project",
+                    createdAt: TestFixtures.makeDate(hour: 9)
+                )
+                var manifest = TestFixtures.makeManifest(
+                    name: "Progress Project",
+                    createdAt: TestFixtures.makeDate(hour: 9),
+                    assets: [picked, pending],
+                    groups: [group]
+                )
+                manifest.session.exportJobs = [
+                    ExportJob(
+                        id: UUID(),
+                        createdAt: TestFixtures.makeDate(hour: 10),
+                        completedAt: TestFixtures.makeDate(hour: 10, minute: 1),
+                        status: .completed,
+                        options: .default,
+                        targetAssetIDs: [picked.id],
+                        exportedCount: 1,
+                        totalCount: 1,
+                        speedBytesPerSecond: nil,
+                        estimatedSecondsRemaining: nil,
+                        destinationDescription: "/tmp/out",
+                        lastError: nil,
+                        cleanedCount: 0,
+                        cleanupCancelledCount: 0,
+                        albumDescription: nil,
+                        failures: nil
+                    )
+                ]
+                try TestFixtures.writeManifest(manifest, in: directory)
+
+                store.refreshProjectSummaries()
+                let summary = try XCTUnwrap(store.projectSummaries.first(where: { $0.name == "Progress Project" }))
+
+                XCTAssertEqual(summary.decidedCount, 1)
+                XCTAssertEqual(summary.totalAssetCount, 2)
+                XCTAssertEqual(summary.exportJobCount, 1)
+                XCTAssertNotNil(summary.lastExportedAt)
+                XCTAssertFalse(summary.isCullingComplete)
+                XCTAssertFalse(summary.isArchived)
+
+                store.setArchive(summary, archived: true)
+                let after = try XCTUnwrap(store.projectSummaries.first(where: { $0.name == "Progress Project" }))
+                XCTAssertTrue(after.isArchived)
             }
         }
     }

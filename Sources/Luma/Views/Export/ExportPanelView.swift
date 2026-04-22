@@ -7,6 +7,22 @@ struct ExportPanelView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let only = store.exportOptions.onlyAssetIDs {
+                    Section {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.clockwise.circle.fill")
+                                .foregroundStyle(.orange)
+                            Text("仅重试上次失败的 \(only.count) 项")
+                                .font(.callout.weight(.medium))
+                            Spacer()
+                            Button("还原为全部 Picked") {
+                                store.exportOptions.onlyAssetIDs = nil
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                }
+
                 Section("导出目标") {
                     Picker("目标", selection: $store.exportOptions.destination) {
                         Text("文件夹").tag(ExportDestination.folder)
@@ -60,6 +76,10 @@ struct ExportPanelView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                if store.exportOptions.destination == .photosApp, store.hasPhotosLibrarySources {
+                    photosCleanupSection
+                }
+
                 Section("当前批次") {
                     LabeledContent("已选", value: "\(store.pickedAssetsCount) 张")
                     LabeledContent("未选", value: "\(store.archiveCandidatesCount) 张")
@@ -97,6 +117,47 @@ struct ExportPanelView: View {
             }
         }
         .frame(minWidth: 560, minHeight: 420)
+    }
+
+    @ViewBuilder
+    private var photosCleanupSection: some View {
+        Section("清理源相册") {
+            Picker("策略", selection: $store.exportOptions.photosCleanupStrategy) {
+                Text("仅加新相册（原图保留）").tag(PhotosCleanupStrategy.keepOriginals)
+                Text("加相册 + 删除未选原图").tag(PhotosCleanupStrategy.deleteRejectedOriginals)
+            }
+            .pickerStyle(.inline)
+
+            let rejectedCount = store.photosRejectedFromLibraryCount
+            LabeledContent("将创建相册", value: "\(store.pickedAssetsCount) 张")
+            LabeledContent(
+                store.exportOptions.photosCleanupStrategy == .deleteRejectedOriginals ? "将申请删除" : "可申请删除",
+                value: "\(rejectedCount) 张"
+            )
+
+            if store.exportOptions.photosCleanupStrategy == .deleteRejectedOriginals {
+                Toggle("试跑（Dry-run · 不真删，仅写日志）", isOn: $store.exportOptions.photosCleanupDryRun)
+
+                if rejectedCount > 0 {
+                    Label(
+                        store.exportOptions.photosCleanupDryRun
+                            ? "试跑模式：PhotoKit 不会被调用，照片库不会变动。"
+                            : "执行时系统会弹原生确认框；不点「Delete」则整批回滚，不会删任何照片。",
+                        systemImage: store.exportOptions.photosCleanupDryRun ? "testtube.2" : "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(store.exportOptions.photosCleanupDryRun ? Color.secondary : Color.orange)
+                    .font(.caption)
+                } else {
+                    Text("当前没有「源 = 照片 App 且已 reject」的资产，清理策略不会产生动作。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("原图全部保留，最安全。若需同步清爽手机相册，请切换到上面的「删除未选原图」。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func pathRow(title: String, path: String, action: @escaping () -> Void) -> some View {

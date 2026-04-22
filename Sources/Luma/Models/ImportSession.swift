@@ -66,11 +66,11 @@ enum ImportSessionStatus: String, Codable, Hashable {
     case failed
 }
 
-/// In-flight import checkpoint (disk) and completed import history (inside `Expedition`).
+/// In-flight import checkpoint (disk) and completed import history (inside `Session`).
 struct ImportSession: Codable, Identifiable, Hashable {
     let id: UUID
     var source: ImportSourceDescriptor
-    /// Set while a recoverable checkpoint exists on disk; omitted from expedition manifest when `nil`.
+    /// Set while a recoverable checkpoint exists on disk; omitted from session manifest when `nil`.
     var projectDirectory: URL?
     var projectName: String?
     var createdAt: Date

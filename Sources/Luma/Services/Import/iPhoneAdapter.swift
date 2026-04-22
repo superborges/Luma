@@ -59,7 +59,10 @@ struct iPhoneAdapter: ImportSourceAdapter {
     }
 
     static func availableDevices() async -> [ConnectedAppleMobileDevice] {
-        let devices = await IPhoneDeviceDiscovery().discoverDevices()
+        // ImageCaptureCore 要求 ICDeviceBrowser 在主线程创建 / start；且并发两次 start
+        // 会在系统框架里 objc_msgSend 崩（见 crash: Thread 6 + 10 同栈）。因此：
+        // 1) @MainActor 跑整段 discovery；2) actor 串行化并发调用。
+        let devices = await IPhoneDiscoverySerialGate.shared.discover()
         return devices
             .compactMap { device in
                 guard let id = device.uuidString, !id.isEmpty else { return nil }
@@ -399,6 +402,17 @@ private final class IPhoneImportSession {
     }
 }
 
+/// 串行化所有 `ICDeviceBrowser` 发现：避免 ImportSourceMonitor 与 ProjectStore 周期刷新并发
+/// 各调一次 `availableDevices()` 时在框架内撞车。
+private actor IPhoneDiscoverySerialGate {
+    static let shared = IPhoneDiscoverySerialGate()
+
+    func discover(timeout: Duration = .seconds(2)) async -> [ICCameraDevice] {
+        await IPhoneDeviceDiscovery().discoverDevices(timeout: timeout)
+    }
+}
+
+@MainActor
 private final class IPhoneDeviceDiscovery: NSObject, ICDeviceBrowserDelegate {
     private var browser: ICDeviceBrowser?
     private var devices: [ICCameraDevice] = []
@@ -426,7 +440,26 @@ private final class IPhoneDeviceDiscovery: NSObject, ICDeviceBrowserDelegate {
         }
     }
 
-    func deviceBrowser(_ browser: ICDeviceBrowser, didAdd device: ICDevice, moreComing: Bool) {
+    /// ImageCapture 回调可能来自非主队列；用 `nonisolated` + 切回 MainActor，避免与 `start` 线程打架。
+    nonisolated func deviceBrowser(_ browser: ICDeviceBrowser, didAdd device: ICDevice, moreComing: Bool) {
+        Task { @MainActor [weak self] in
+            self?.handleDidAdd(browser: browser, device: device, moreComing: moreComing)
+        }
+    }
+
+    nonisolated func deviceBrowser(_ browser: ICDeviceBrowser, didRemove device: ICDevice, moreGoing: Bool) {
+        Task { @MainActor [weak self] in
+            self?.handleDidRemove(browser: browser, device: device, moreGoing: moreGoing)
+        }
+    }
+
+    nonisolated func deviceBrowserDidEnumerateLocalDevices(_ browser: ICDeviceBrowser) {
+        Task { @MainActor [weak self] in
+            self?.finish()
+        }
+    }
+
+    private func handleDidAdd(browser: ICDeviceBrowser, device: ICDevice, moreComing: Bool) {
         guard let camera = device as? ICCameraDevice,
               Self.isSupportedAppleMobileDevice(camera) else {
             return
@@ -441,16 +474,12 @@ private final class IPhoneDeviceDiscovery: NSObject, ICDeviceBrowserDelegate {
         }
     }
 
-    func deviceBrowser(_ browser: ICDeviceBrowser, didRemove device: ICDevice, moreGoing: Bool) {
+    private func handleDidRemove(browser: ICDeviceBrowser, device: ICDevice, moreGoing: Bool) {
         guard let removedID = device.uuidString else { return }
         devices.removeAll { $0.uuidString == removedID }
         if !moreGoing, browser.isBrowsing == false {
             finish()
         }
-    }
-
-    func deviceBrowserDidEnumerateLocalDevices(_ browser: ICDeviceBrowser) {
-        finish()
     }
 
     private func finish() {

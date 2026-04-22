@@ -1,6 +1,8 @@
 import Foundation
 
-struct Expedition: Identifiable, Codable, Hashable {
+/// 顶层会话模型。一个 Session 对应用户一次"从源导入 → 选片 → 导出"的完整工作流。
+/// v1 从旧 `Expedition` 重命名而来；磁盘格式见 `SessionManifest`。
+struct Session: Identifiable, Codable, Hashable {
     let id: UUID
     var name: String
     var createdAt: Date
@@ -13,6 +15,11 @@ struct Expedition: Identifiable, Codable, Hashable {
     var importSessions: [ImportSession]
     var editingSessions: [EditingSession]
     var exportJobs: [ExportJob]
+    /// v1 归档语义：仅是首页列表上的"软标签"。
+    /// 不删除项目目录，仅在首页列表里以"已归档"分组靠后展示。
+    var isArchived: Bool? = nil
+    /// 用户手动归档时的时间，便于排序。
+    var archivedAt: Date? = nil
 
     var assetCount: Int { assets.count }
 
@@ -96,8 +103,8 @@ struct Expedition: Identifiable, Codable, Hashable {
         createdAt: Date,
         assets: [MediaAsset],
         groups: [PhotoGroup]
-    ) -> Expedition {
-        Expedition(
+    ) -> Session {
+        Session(
             id: id,
             name: name,
             createdAt: createdAt,
@@ -109,7 +116,9 @@ struct Expedition: Identifiable, Codable, Hashable {
             groups: groups,
             importSessions: [],
             editingSessions: [],
-            exportJobs: []
+            exportJobs: [],
+            isArchived: false,
+            archivedAt: nil
         )
     }
 }
@@ -124,7 +133,7 @@ extension PipelineStageStatus {
     }
 }
 
-extension Expedition {
+extension Session {
     func sessionStageStatesFromPipeline() -> [SessionStageState] {
         let p = pipelineStatus
         return [
