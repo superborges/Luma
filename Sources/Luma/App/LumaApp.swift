@@ -70,19 +70,8 @@ struct LumaApp: App {
     }
 }
 
-/// AppKit 通过 ObjC runtime 调 `NSApplicationDelegate` 方法。**故意不标 `@MainActor`**：
-///
-/// macOS 26 / SwiftUI 7.3 / Swift 6.2 / arm64e 上，把 `@MainActor` 加在 ObjC 可见的类上
-/// 会让编译器在 `@objc` 方法 prologue 注入 `swift_task_isCurrentExecutorWithFlagsImpl`
-/// PAC 校验；该校验会拿到悬挂 SerialExecutorRef，触发 `swift_getObjectType(invalid_addr)`
-/// SIGSEGV。Round 7（`HoverDetectorView.isFlipped.getter`）和 Round 8
-/// （`AppActivationDelegate.applicationDidBecomeActive` 内的
-/// `NSApp.windows.first(where:)` 闭包）都是同一根因，详见 `KNOWN_ISSUES.md`。
-///
-/// 类保持 nonisolated、delegate 方法不加 `@MainActor`，避免 Round 7/8 的 `@objc` 入口 PAC 问题。
-/// **不要**在 ObjC 回调里同步 `MainActor.assumeIsolated`：主线程上仍可能无 MainActor **任务**上下文，
-/// 会 `_assertionFailure`（.ips: EXC_BREAKPOINT → assumeIsolated → `applicationDidBecomeActive`），
-/// NSAlert/照片 模态结束也会走该路径。用 `Task { @MainActor in }` 显式投到 MainActor。
+/// AppKit 通过 ObjC 调 delegate；**不要**整类标 `@MainActor`，也**不要**在 `@objc` 入口里同步
+/// `MainActor.assumeIsolated`（见 `KNOWN_ISSUES.md`）。用 `Task { @MainActor in … }`。
 final class AppActivationDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task { @MainActor in
