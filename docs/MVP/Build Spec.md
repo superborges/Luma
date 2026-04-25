@@ -34,7 +34,7 @@
 - ✅ **Session**（原 PRD 称 Import Session）列表 → 进入 **选片工作区**（`CullingWorkspaceView` 三栏布局）。
 - ✅ **智能分组**（时间/地点等）、**连拍**识别与组内选优流程。
 - ✅ **Picked / Rejected / Pending** 与键盘快捷键。
-- ✅ **本地**启发式/规则评分（`LocalMLScorer` 等），右栏可展示分数类信息；**无云端 Vision API 主路径**（相关代码在 `v2-mothball/`）。
+- ✅ **本地**启发式/规则评分（`LocalMLScorer` 等），右栏可展示分数类信息；**无云端 Vision API 路线**（产品不规划实现）。
 
 ### 3.3 导出
 
@@ -52,7 +52,7 @@
 
 ### 3.5 明确未纳入主目标 / 非 MVP
 
-- 云端 AI 评分的完整产品与预算管理（见 `v2-mothball/`）。
+- 云端多模型 AI 评分与按预算调度（`docs/raw/PRODUCT_SPEC.md` 中部分章节为**愿景**，不开发）。
 - 设置页中 **无**「多模型 / API Key / 经济·平衡·最高质量」等完整配置（长期愿景见 `docs/raw/PRODUCT_SPEC.md` 与 `docs/MVP/Concept Note`）。
 
 ## 4. 用户主路径（与实现一致）
@@ -80,3 +80,4 @@
 ## 7. 修订记录
 
 - **2026-04**：与当前代码对齐；补充「Mac 照片 = 仅张数」、完整版 picker 未接菜单、设置页实际 Tab、无云端 AI 主路径等。
+- **2026-04**：删除已废弃的 `v2-mothball/`（原云端实验代码），文档同步。
