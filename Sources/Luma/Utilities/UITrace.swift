@@ -63,10 +63,17 @@ enum UITrace {
 
     /// 拼装 trace 用的标准 metadata：始终包含 `element_id`，若该 id 已在 `UIRegistry`
     /// 注册则附上 `kind` 和 `frame_x/y/w/h`。也对外暴露给自定义 trace 调用方使用。
+    ///
+    /// 拆成重载，避免在默认参数里引用 `UIRegistry.shared` 触发「nonisolated 语境引用 MainActor 隔离成员」
+    /// 的 Swift 6 模式告警。
+    static func standardMetadata(for id: String, base: [String: String] = [:]) -> [String: String] {
+        standardMetadata(for: id, base: base, registry: UIRegistry.shared)
+    }
+
     static func standardMetadata(
         for id: String,
         base: [String: String] = [:],
-        registry: UIRegistry = .shared
+        registry: UIRegistry
     ) -> [String: String] {
         var meta = base
         meta["element_id"] = id

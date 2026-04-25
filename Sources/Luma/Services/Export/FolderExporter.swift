@@ -15,9 +15,11 @@ struct FolderExporter: ExportDestinationAdapter {
         }
 
         let pickedAssets = assets.filter { $0.userDecision == .picked }
-        let groupLookup = Dictionary(uniqueKeysWithValues: groups.flatMap { group in
-            group.assets.map { ($0, group) }
-        })
+        // 同一资产若出现在多组，保留在 `groups` 中**最先**出现的那组（flatMap 顺序）。
+        let groupLookup = Dictionary(
+            groups.flatMap { group in group.assets.map { ($0, group) } },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         var exportedCount = 0
         var skippedCount = 0

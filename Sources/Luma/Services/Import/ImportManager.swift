@@ -346,7 +346,7 @@ struct ImportManager: Sendable {
             throw error
         }
 
-        let itemsByResumeKey = Dictionary(uniqueKeysWithValues: discoveredItems.map { ($0.resumeKey, $0) })
+        let itemsByResumeKey = discoveredItems.dictionaryByResumeKeyLastWins()
         var manifest: SessionManifest
 
         if let existingManifest {

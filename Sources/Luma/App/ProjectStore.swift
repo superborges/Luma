@@ -63,7 +63,9 @@ struct BurstDisplayGroup: Identifiable {
            let bestAsset = assets.first(where: { $0.id == bestAssetID }) {
             return bestAsset
         }
-        return assets.first!
+        // `visibleBurstGroups` 在构造时已 `compactMap` 掉空组；若仍为空说明不变式被破坏。
+        precondition(!assets.isEmpty, "BurstDisplayGroup.assets must be non-empty")
+        return assets[0]
     }
 
     var count: Int {
@@ -1653,7 +1655,7 @@ final class ProjectStore {
             let existingIDs = Set(snapshotGroups.map(\.id))
             let refreshedIDs = Set(refreshedGroups.map(\.id))
             guard existingIDs == refreshedIDs else { return }
-            let nameLookup = Dictionary(uniqueKeysWithValues: refreshedGroups.map { ($0.id, $0.name) })
+            let nameLookup = Dictionary(refreshedGroups.map { ($0.id, $0.name) }, uniquingKeysWith: { _, new in new })
             var updatedGroups = self.groups
             var changed = false
             for index in updatedGroups.indices {
@@ -1771,8 +1773,8 @@ final class ProjectStore {
         guard derivedStateIsDirty else { return }
         let startedAt = ProcessInfo.processInfo.systemUptime
 
-        assetLookupCache = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
-        groupLookupCache = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
+        assetLookupCache = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        groupLookupCache = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
         overallSummaryCache = computeSummary(for: assets)
         groupSummaryCache = groups.reduce(into: [:]) { cache, group in
             cache[group.id] = computeSummary(for: group.assets.compactMap { assetLookupCache[$0] })
@@ -1895,7 +1897,7 @@ final class ProjectStore {
     }
 
     private func refreshGroupRecommendations() {
-        let assetLookup = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        let assetLookup = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
 
         for groupIndex in groups.indices {
             let groupAssets = groups[groupIndex].assets.compactMap { assetLookup[$0] }

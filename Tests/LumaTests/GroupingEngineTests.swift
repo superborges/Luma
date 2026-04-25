@@ -413,7 +413,7 @@ private struct StubVisualSubgroupingProvider: VisualSubgroupingProvider {
             return assets.map { [$0] }
         }
 
-        let lookup = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        let lookup = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
         return groups.map { subgroupIDs in
             subgroupIDs.compactMap { lookup[$0] }
         }

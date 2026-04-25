@@ -9,3 +9,5 @@ DerivedData/
 # Cursor MCP may contain API keys — keep local only
 .cursor/mcp.json
 Artifacts/
+# 本机 V1 合约素材路径（不提交；用 v1-contract.local.example.sh 为模板）
+scripts/v1-contract.local.sh

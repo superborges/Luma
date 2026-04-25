@@ -274,7 +274,8 @@ private struct TraceSummaryExporter {
         metricSummaries: [TraceMetricSummary]
     ) -> [TraceHotspotSummary] {
         let summaryLookup = Dictionary(
-            uniqueKeysWithValues: metricSummaries.map { (TraceMetricKey(category: $0.category, name: $0.name), $0) }
+            metricSummaries.map { (TraceMetricKey(category: $0.category, name: $0.name), $0) },
+            uniquingKeysWith: { _, new in new }
         )
 
         return monitoredMetricDefinitions.compactMap { definition in
@@ -302,7 +303,8 @@ private struct TraceSummaryExporter {
     private func interactionChains(for records: [TraceSummaryRecord]) -> [TraceTriggerChain] {
         let indexedRecords = Array(records.enumerated())
         let triggerLookup = Dictionary(
-            uniqueKeysWithValues: triggerDefinitions.map { (TraceMetricKey(category: $0.category, name: $0.name), $0) }
+            triggerDefinitions.map { (TraceMetricKey(category: $0.category, name: $0.name), $0) },
+            uniquingKeysWith: { _, new in new }
         )
         let triggerIndices = indexedRecords.compactMap { index, record -> Int? in
             triggerLookup[TraceMetricKey(category: record.category, name: record.name)] == nil ? nil : index

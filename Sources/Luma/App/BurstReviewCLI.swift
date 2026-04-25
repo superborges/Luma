@@ -110,7 +110,7 @@ private struct BurstReviewExporter {
             visualSubgroupingProvider: SilentVisualSubgroupingProvider()
         )
         let sceneGroups = await groupingEngine.makeGroups(from: assets)
-        let assetLookup = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        let assetLookup = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
         var analyzer = BurstReviewAnalyzer(rootURL: configuration.rootURL)
 
         var splitCandidates: [BurstReviewCandidate] = []

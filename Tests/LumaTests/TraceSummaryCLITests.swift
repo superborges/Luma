@@ -2,8 +2,8 @@ import XCTest
 @testable import Luma
 
 final class TraceSummaryCLITests: XCTestCase {
-    func testRunWritesMarkdownAndJSONSummaries() async throws {
-        try await TestFixtures.withTemporaryDirectory(prefix: "TraceSummary") { root in
+    func testRunWritesMarkdownAndJSONSummaries() throws {
+        try TestFixtures.withTemporaryDirectory(prefix: "TraceSummary") { root in
             let traceURL = root.appendingPathComponent("runtime.jsonl")
             let markdownURL = root.appendingPathComponent("trace-summary.md")
             let jsonURL = root.appendingPathComponent("trace-summary.json")

@@ -81,7 +81,7 @@ struct VideoArchiver {
 
     private func archiveSync(groups: [PhotoGroup], assets: [MediaAsset], batchName: String) throws -> ArchiveResult {
         let destinationRoot = try AppDirectories.archiveBatchDirectory(named: batchName)
-        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        let assetsByID = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
         var generatedFiles: [URL] = []
         var videoEntries: [ArchiveVideoEntry] = []
 

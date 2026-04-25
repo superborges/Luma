@@ -829,12 +829,13 @@ struct GroupingEngine: Sendable {
     private func locationLabels(for assets: [MediaAsset]) -> [UUID: Int] {
         let locatedAssets = assets.filter { $0.metadata.gpsCoordinate != nil }
         guard locatedAssets.count >= minimumClusterSize else {
-            return Dictionary(uniqueKeysWithValues: assets.map { ($0.id, 0) })
+            return Dictionary(assets.map { ($0.id, 0) }, uniquingKeysWith: { _, new in new })
         }
 
-        let coordinates = Dictionary(uniqueKeysWithValues: locatedAssets.compactMap { asset in
-            asset.metadata.gpsCoordinate.map { (asset.id, $0) }
-        })
+        let coordinates = Dictionary(
+            locatedAssets.compactMap { asset in asset.metadata.gpsCoordinate.map { (asset.id, $0) } },
+            uniquingKeysWith: { _, new in new }
+        )
 
         var labels: [UUID: Int] = [:]
         var clusterID = 0

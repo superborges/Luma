@@ -95,7 +95,10 @@ final class RealFolderIntegrationTests: XCTestCase {
             XCTAssertEqual(imported.manifest.assets.count, context.expectedImportCount)
             XCTAssertFalse(imported.manifest.groups.isEmpty)
 
-            let assetsByID = Dictionary(uniqueKeysWithValues: imported.manifest.assets.map { ($0.id, $0) })
+            let assetsByID = Dictionary(
+                imported.manifest.assets.map { ($0.id, $0) },
+                uniquingKeysWith: { _, new in new }
+            )
             let preservedPerGroup = 3
             var preservedIDs = Set<UUID>()
             for group in imported.manifest.groups {
@@ -160,9 +163,17 @@ final class RealFolderIntegrationTests: XCTestCase {
     }
 
     private func makeContext(prefix: String) throws -> RealFolderContext {
-        guard let rawImportPath = ProcessInfo.processInfo.environment["LUMA_REAL_IMPORT_PATH"],
-              !rawImportPath.isEmpty else {
-            throw XCTSkip("Set LUMA_REAL_IMPORT_PATH to run the real-folder integration test.")
+        let env = ProcessInfo.processInfo.environment
+        let rawImportPath: String? = {
+            for key in ["LUMA_V1_CONTRACT", "LUMA_REAL_IMPORT_PATH"] {
+                if let v = env[key], !v.isEmpty { return v }
+            }
+            return nil
+        }()
+        guard let rawImportPath else {
+            throw XCTSkip(
+                "Set LUMA_V1_CONTRACT (V1 合约目录) 或 LUMA_REAL_IMPORT_PATH 为真实素材目录以跑本组集成测试。"
+            )
         }
 
         let importURL = URL(fileURLWithPath: rawImportPath, isDirectory: true)

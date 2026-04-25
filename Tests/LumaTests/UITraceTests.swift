@@ -3,6 +3,18 @@ import XCTest
 
 @MainActor
 final class UITraceTests: XCTestCase {
+    func testStandardMetadataTwoArgOverloadReadsFromSharedRegistry() {
+        let id = "uitrace.test.shared_registry_overload"
+        UIRegistry.shared.register(id: id, kind: "label", frame: CGRect(x: 1, y: 2, width: 3, height: 4), metadata: [:])
+        defer { UIRegistry.shared.clear() }
+
+        let meta = UITrace.standardMetadata(for: id)
+
+        XCTAssertEqual(meta["element_id"], id)
+        XCTAssertEqual(meta["kind"], "label")
+        XCTAssertEqual(meta["frame_x"], "1.0")
+    }
+
     func testStandardMetadataAlwaysIncludesElementID() {
         let registry = UIRegistry()
         let meta = UITrace.standardMetadata(for: "culling.bottom.action.pick", registry: registry)

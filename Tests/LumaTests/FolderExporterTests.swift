@@ -72,4 +72,93 @@ final class FolderExporterTests: XCTestCase {
             XCTAssertTrue(xmp.contains("Best frame"))
         }
     }
+
+    /// 与 `groupLookup` 的 `uniquingKeysWith: { first, _ in first }` 对齐：同一张图出现在多组时，以 `groups` 数组**最先**出现的那组名作为目录。
+    func testExportUsesFirstGroupWhenAssetAppearsInMultipleGroups() async throws {
+        let exporter = FolderExporter()
+
+        try await TestFixtures.withTemporaryDirectory { root in
+            let sourceRoot = root.appendingPathComponent("Source", isDirectory: true)
+            let outputRoot = root.appendingPathComponent("Output", isDirectory: true)
+            try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: outputRoot, withIntermediateDirectories: true)
+
+            let fileURL = sourceRoot.appendingPathComponent("SHARED.JPG")
+            let capture = TestFixtures.makeDate(hour: 10)
+            try TestFixtures.createFile(at: fileURL, modifiedAt: capture)
+
+            let sharedID = UUID()
+            var asset = TestFixtures.makeAsset(
+                id: sharedID,
+                baseName: "SHARED",
+                captureDate: capture,
+                userDecision: .picked
+            )
+            asset.previewURL = fileURL
+
+            let groupAlpha = TestFixtures.makeGroup(name: "Alpha Scene", assets: [asset], recommendedAssets: [sharedID])
+            let groupBeta = TestFixtures.makeGroup(name: "Beta Scene", assets: [asset], recommendedAssets: [sharedID])
+
+            var options = ExportOptions.default
+            options.outputPath = outputRoot
+            options.folderTemplate = .byGroup
+            options.writeXmpSidecar = false
+
+            let result = try await exporter.export(
+                assets: [asset],
+                groups: [groupAlpha, groupBeta],
+                options: options
+            )
+
+            XCTAssertEqual(result.exportedCount, 1, "应只导出一份文件，不重复到两个组目录")
+            XCTAssertTrue(result.failures.isEmpty, "\(result.failures)")
+
+            let alphaFolder = outputRoot.appendingPathComponent("Alpha Scene", isDirectory: true)
+            let betaFolder = outputRoot.appendingPathComponent("Beta Scene", isDirectory: true)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: alphaFolder.appendingPathComponent("SHARED.JPG").path))
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: betaFolder.appendingPathComponent("SHARED.JPG").path),
+                "后出现的组不应再得到同一资产的副本"
+            )
+        }
+    }
+
+    func testExportUsesFirstGroupInArrayWhenDuplicateAssetOrderReversed() async throws {
+        let exporter = FolderExporter()
+
+        try await TestFixtures.withTemporaryDirectory { root in
+            let sourceRoot = root.appendingPathComponent("Source", isDirectory: true)
+            let outputRoot = root.appendingPathComponent("Output", isDirectory: true)
+            try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: outputRoot, withIntermediateDirectories: true)
+
+            let fileURL = sourceRoot.appendingPathComponent("REV.JPG")
+            let capture = TestFixtures.makeDate(hour: 11)
+            try TestFixtures.createFile(at: fileURL, modifiedAt: capture)
+
+            let sharedID = UUID()
+            var asset = TestFixtures.makeAsset(
+                id: sharedID,
+                baseName: "REV",
+                captureDate: capture,
+                userDecision: .picked
+            )
+            asset.previewURL = fileURL
+
+            let groupAlpha = TestFixtures.makeGroup(name: "Alpha Scene", assets: [asset], recommendedAssets: [sharedID])
+            let groupBeta = TestFixtures.makeGroup(name: "Beta Scene", assets: [asset], recommendedAssets: [sharedID])
+
+            var options = ExportOptions.default
+            options.outputPath = outputRoot
+            options.folderTemplate = .byGroup
+            options.writeXmpSidecar = false
+
+            _ = try await exporter.export(assets: [asset], groups: [groupBeta, groupAlpha], options: options)
+
+            let alphaFolder = outputRoot.appendingPathComponent("Alpha Scene", isDirectory: true)
+            let betaFolder = outputRoot.appendingPathComponent("Beta Scene", isDirectory: true)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: betaFolder.appendingPathComponent("REV.JPG").path))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: alphaFolder.appendingPathComponent("REV.JPG").path))
+        }
+    }
 }
