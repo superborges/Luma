@@ -92,10 +92,14 @@ struct SettingsView: View {
                     LabeledContent("Trace 日志", value: url.path)
                         .textSelection(.enabled)
                 }
+                if let path = try? AppDirectories.importBreadcrumbFileURL().path(percentEncoded: false) {
+                    LabeledContent("导入面包屑 (同步)", value: path)
+                        .textSelection(.enabled)
+                }
             } header: {
                 Text("诊断")
             } footer: {
-                Text("Luma 不会自动上传任何 trace；如需复盘 bug，请把上面的日志手动发给开发者。")
+                Text("Luma 不会自动上传任何 trace；「导入面包屑」在相册导入各阶段同步追加，若崩溃可据此看最后一行；请与 Trace 一并打包发给开发者。")
                     .font(.caption)
             }
         }

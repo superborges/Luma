@@ -111,6 +111,11 @@ enum AppDirectories {
         try importSessionsRoot().appendingPathComponent("\(id.uuidString).json")
     }
 
+    /// 与 `import-breadcrumb.jsonl` 同目录；设置页可展示，便于随 trace 一起打包反馈。
+    static func importBreadcrumbFileURL() throws -> URL {
+        try diagnosticsRoot().appendingPathComponent("import-breadcrumb.jsonl")
+    }
+
     static func archiveBatchDirectory(named name: String) throws -> URL {
         let directory = try archivesRoot().appendingPathComponent(sanitizePathComponent(name), isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

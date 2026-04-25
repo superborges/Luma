@@ -323,6 +323,15 @@ struct ImportManager: Sendable {
         do {
             let enumerateStartedAt = ProcessInfo.processInfo.systemUptime
             try await connectionTracker.ensureConnected()
+            if case .photosLibrary = session.source {
+                ImportPathBreadcrumb.mark(
+                    "import_manager_photos_enumerate_await",
+                    [
+                        "session": session.id.uuidString,
+                        "source": session.source.stableID
+                    ]
+                )
+            }
             discoveredItems = try await adapter.enumerate()
             Self.traceMetric(
                 "import_source_enumerated",

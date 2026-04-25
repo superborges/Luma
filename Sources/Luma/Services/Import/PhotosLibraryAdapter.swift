@@ -49,7 +49,9 @@ struct PhotosLibraryAdapter: ImportSourceAdapter {
     }
 
     func enumerate() async throws -> [DiscoveredItem] {
+        ImportPathBreadcrumb.mark("photos_library_enumerate_start", ["limit": String(limit)])
         try await ensureAuthorization()
+        ImportPathBreadcrumb.mark("photos_library_enumerate_authorized", [:])
 
         let fetchOptions = makeFetchOptions(limit: limit)
 
@@ -90,7 +92,13 @@ struct PhotosLibraryAdapter: ImportSourceAdapter {
 
         // PRD 约束：只读本地缓存版，跳过仅存在于 iCloud 的资产，避免暂停整个 import。
         let locallyAvailable = await filterLocallyAvailable(candidates)
-
+        ImportPathBreadcrumb.mark(
+            "photos_library_enumerate_done",
+            [
+                "candidates": String(candidates.count),
+                "local": String(locallyAvailable.count)
+            ]
+        )
         return locallyAvailable.map { Self.makeItem(from: $0) }
     }
 

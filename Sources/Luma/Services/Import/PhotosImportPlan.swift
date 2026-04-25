@@ -122,9 +122,21 @@ struct PhotosImportPlan: Equatable, Identifiable {
 
     var displayName: String {
         var parts: [String] = ["Mac · 照片 App"]
-        if let smartAlbum,
-           let option = PhotosImportPlanner.smartAlbums.first(where: { $0.id == smartAlbum }) {
-            parts.append(option.title)
+        if let smartAlbum {
+            var smartTitle: String?
+            for option in PhotosImportPlanner.smartAlbums {
+                if option.id == smartAlbum {
+                    smartTitle = option.title
+                    break
+                }
+            }
+            if let smartTitle {
+                parts.append(smartTitle)
+            } else if let userAlbumTitle {
+                parts.append(userAlbumTitle)
+            } else {
+                parts.append("全部图片")
+            }
         } else if let userAlbumTitle {
             parts.append(userAlbumTitle)
         } else {

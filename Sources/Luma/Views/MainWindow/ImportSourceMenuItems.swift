@@ -6,13 +6,15 @@ struct ImportSourceMenuItems: View {
 
     var body: some View {
         Button {
-            Task { await store.importFolder() }
+            // Menu 收合时若直接 `Task { await }`，子任务有概率被随菜单一起取消，表现为「点了没反应」。
+            // 先 `DispatchQueue.main.async` 脱离菜单的同步更新周期，再 @MainActor 跑导入。
+            scheduleImport { await $0.importFolder() }
         } label: {
             Label("普通目录", systemImage: "folder")
         }
         // SD 卡：未检测到挂载时，直接禁用并改文案，省得用户白点。
         Button {
-            Task { await store.importSDCard() }
+            scheduleImport { await $0.importSDCard() }
         } label: {
             if store.hasConnectedSDCard {
                 let detail = store.connectedSDCardNames.first.map { "（\($0)）" } ?? ""
@@ -23,15 +25,14 @@ struct ImportSourceMenuItems: View {
         }
         .disabled(!store.hasConnectedSDCard)
         Button {
-            // 必须 async 启动：先把 PhotoKit 授权对话框走完再弹 picker，避免 sheet 叠 sheet
-            // 跟 PhotoKit 守护进程初始化时序冲突。详见 ProjectStore.presentPhotosImportPicker。
-            Task { await store.presentPhotosImportPicker() }
+            // 调试用仅张数：仍把菜单与模态错开一帧（见 `scheduleImportAfterMenuTeardown` 注释）。
+            scheduleImportAfterMenuTeardown { await $0.presentPhotosImportPicker() }
         } label: {
-            Label("Mac · 照片 App (iCloud)", systemImage: "photo.on.rectangle.angled")
+            Label("Mac · 照片（仅张数·调试）", systemImage: "photo.on.rectangle.angled")
         }
         // iPhone USB：未连接 / 未解锁时禁用，提示文案改成"插入并解锁 iPhone"。
         Button {
-            Task { await store.importIPhone() }
+            scheduleImport { await $0.importIPhone() }
         } label: {
             if store.hasConnectedIPhone {
                 let detail = store.connectedIPhoneNames.first.map { "（\($0)）" } ?? ""
@@ -44,11 +45,32 @@ struct ImportSourceMenuItems: View {
         if store.recoverableImportSession != nil {
             Divider()
             Button {
-                Task { await store.resumeRecoverableImport() }
+                scheduleImport { await $0.resumeRecoverableImport() }
             } label: {
                 Label("继续未完成的导入", systemImage: "arrow.clockwise.circle")
             }
             .disabled(store.isImporting)
+        }
+    }
+
+    private func scheduleImport(_ work: @escaping @MainActor (ProjectStore) async -> Void) {
+        let target = store
+        DispatchQueue.main.async {
+            Task { @MainActor in
+                await work(target)
+            }
+        }
+    }
+
+    /// 专供「从照片导入」：在单次 `main.async` 之外再多排一程，等 SwiftUI 菜单/焦点完全落地后再跑异步导入。
+    private func scheduleImportAfterMenuTeardown(_ work: @escaping @MainActor (ProjectStore) async -> Void) {
+        let target = store
+        DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                Task { @MainActor in
+                    await work(target)
+                }
+            }
         }
     }
 }

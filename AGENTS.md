@@ -1,7 +1,6 @@
 IMPORTANT: Go straight to the point. Try the simplest approach first without going in circles. Do not overdo it. Be extra concise.
 
-After **any** code change that affects the macOS app, the agent must **build and launch Luma in the background** so the user can verify immediately:
-`swift build` then run `.build/arm64-apple-macosx/debug/Luma` (use `swift build --show-bin-path` if the triple differs). Do not skip this unless the user explicitly opts out for that turn.
+After **any** code change that affects the macOS app, the agent must **build and launch Luma in the background** so the user can verify immediately. Prefer `scripts/run-luma.sh` (produces an ad-hoc–signed `Luma.app`; PhotoKit/TCC does not line up with a bare `swift build` binary). If that is unavailable: `swift build` then the path from `swift build --show-bin-path`. Do not skip this unless the user explicitly opts out for that turn.
 
 **User preference:** 改完后要**重启应用**再看效果——若 Luma 已在运行，先退出再打开新构建（或结束旧进程后再启动），避免仍停留在旧实例上看不到 UI 变更。
 

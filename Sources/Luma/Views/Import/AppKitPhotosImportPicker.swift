@@ -22,7 +22,9 @@ import Foundation
 /// 取舍：picker 上不再做"实时预估"。改为：用户选完点继续 → 异步估算 → 再弹一个 NSAlert
 /// 二次确认（"将导入 X 张约 Y MB，确认？"）→ 才真正触发导入。这是更稳的两步式流程，反而
 /// 比单 sheet 内实时刷新更不容易误操作。
-@MainActor
+/// **不**标 `@MainActor`：否则 `SegmentedToggleTarget` 的 `onChange` 会隐式变成 MainActor 闭包，
+/// 从 ObjC selector 回调进来时多一道 `swift_task_isCurrentExecutor` 链，和 Round 8/10 同类崩溃。
+/// 本模块只应在 main 线程用 `NSAlert.runModal`；入口用 `precondition(Thread.isMainThread)`。
 enum AppKitPhotosImportPicker {
     /// 时间预设的固定段（自定义除外，单独处理）。
     private enum DatePresetTab: Int, CaseIterable {
@@ -77,6 +79,7 @@ enum AppKitPhotosImportPicker {
         initialPlan: PhotosImportPlan,
         userAlbums: [PhotosImportPlanner.UserAlbumOption]
     ) -> PhotosImportPickerOutcome {
+        precondition(Thread.isMainThread, "AppKitPhotosImportPicker.presentBlocking must be called on main")
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = "从照片 App 导入"
@@ -192,7 +195,21 @@ enum AppKitPhotosImportPicker {
         // dateTarget 必须存活到 modal 结束；NSSegmentedControl.target 是 weak。
         objc_setAssociatedObject(alert, &Self.assocKey, dateTarget, .OBJC_ASSOCIATION_RETAIN)
 
+        ImportPathBreadcrumb.mark(
+            "photos_picker_run_modal",
+            [
+                "plan_id": initialPlan.id.uuidString,
+                "file": "AppKitPhotosImportPicker"
+            ]
+        )
         let response = alert.runModal()
+        ImportPathBreadcrumb.mark(
+            "photos_picker_run_modal_ended",
+            [
+                "plan_id": initialPlan.id.uuidString,
+                "action": response == .alertFirstButtonReturn ? "continue" : "cancel"
+            ]
+        )
         guard response == .alertFirstButtonReturn else {
             return .cancelled
         }
@@ -228,6 +245,7 @@ enum AppKitPhotosImportPicker {
 
     /// 估算结果二次确认。返回 true 表示用户点了"导入"，false 表示返回修改 / 取消。
     static func presentEstimateConfirmation(estimate: PhotosImportPlanner.Estimate) -> Bool {
+        precondition(Thread.isMainThread, "AppKitPhotosImportPicker.presentEstimateConfirmation must be on main")
         let alert = NSAlert()
         alert.alertStyle = .informational
 
@@ -237,6 +255,7 @@ enum AppKitPhotosImportPicker {
             alert.messageText = "当前条件没有匹配到图片"
             alert.informativeText = "请调整时间区间 / 相册 / 媒体类型 / 上限后重试。"
             alert.addButton(withTitle: "返回修改")
+            ImportPathBreadcrumb.mark("photos_estimate_empty_confirm", ["total": "0"])
             _ = alert.runModal()
             return false
         }
@@ -248,6 +267,7 @@ enum AppKitPhotosImportPicker {
             if estimate.cloudOnlyCount > 0 { why.append("约 \(estimate.cloudOnlyCount) 张仅在 iCloud") }
             alert.informativeText = why.joined(separator: "；") + "。请调整条件后重试。"
             alert.addButton(withTitle: "返回修改")
+            ImportPathBreadcrumb.mark("photos_estimate_all_skipped_confirm", ["net": "0", "total": String(estimate.totalAssetCount)])
             _ = alert.runModal()
             return false
         }
@@ -267,7 +287,16 @@ enum AppKitPhotosImportPicker {
 
         alert.addButton(withTitle: "导入")
         alert.addButton(withTitle: "返回修改")
-        return alert.runModal() == .alertFirstButtonReturn
+        ImportPathBreadcrumb.mark(
+            "photos_estimate_run_confirm_modal",
+            [
+                "net": String(netCount),
+                "total": String(estimate.totalAssetCount)
+            ]
+        )
+        let ok = alert.runModal() == .alertFirstButtonReturn
+        ImportPathBreadcrumb.mark("photos_estimate_confirm_ended", ["import": ok ? "1" : "0"])
+        return ok
     }
 
     // MARK: - 辅助
@@ -336,21 +365,22 @@ enum AppKitPhotosImportPicker {
     }
 
     private static func selectAlbum(in popup: NSPopUpButton, plan: PhotosImportPlan) {
-        if let userID = plan.userAlbumLocalIdentifier,
-           let item = popup.itemArray.first(where: {
-               if case .user(let id, _) = $0.representedObject as? AlbumChoice { return id == userID }
-               return false
-           }) {
-            popup.select(item)
-            return
+        if let userID = plan.userAlbumLocalIdentifier {
+            for item in popup.itemArray {
+                if case .user(let id, _) = item.representedObject as? AlbumChoice, id == userID {
+                    popup.select(item)
+                    return
+                }
+            }
         }
-        if let smart = plan.smartAlbum,
-           let item = popup.itemArray.first(where: {
-               if case .smart(let raw) = $0.representedObject as? AlbumChoice { return raw == smart.rawValue }
-               return false
-           }) {
-            popup.select(item)
-            return
+        if let smart = plan.smartAlbum {
+            let raw = smart.rawValue
+            for item in popup.itemArray {
+                if case .smart(let s) = item.representedObject as? AlbumChoice, s == raw {
+                    popup.select(item)
+                    return
+                }
+            }
         }
         popup.selectItem(at: 0)
     }
@@ -416,10 +446,9 @@ private final class SegmentedToggleTarget: NSObject {
         self.onChange = onChange
     }
     @objc func segmentedChanged(_ sender: NSSegmentedControl) {
-        // 从 nonisolated context 访问 main-actor 隔离的 NSSegmentedControl 属性。
-        // AppKit 在 main thread 触发该 selector，运行时已在 main actor 上，
-        // 所以 assumeIsolated 永远不会 trap。
-        let index = MainActor.assumeIsolated { sender.selectedSegment }
-        onChange(index)
+        let index = sender.selectedSegment
+        Task { @MainActor in
+            onChange(index)
+        }
     }
 }

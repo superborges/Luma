@@ -5,7 +5,8 @@ struct ContentView: View {
     @Bindable var store: ProjectStore
     @AppStorage("Luma.hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
     @State private var isOnboardingPresented: Bool = false
-    // PhotosImportPicker 现在用 AppKit NSAlert 实现（见 AppKitPhotosImportPicker），
+    // 照片导入：`ProjectStore` 现走「仅张数」调试 NSAlert（见 `AppKitPhotosCountOnlyPicker`）；
+    // 完整 AppKit 多段 picker 仍保留在 `AppKitPhotosImportPicker.swift` 供以后恢复。
     // 不再走 SwiftUI sheet，所以这里也不需要任何 outcome state / sheet modifier。
 
     init(store: ProjectStore) {
@@ -52,9 +53,11 @@ struct ContentView: View {
                 isOnboardingPresented = true
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            store.refreshPhotosAccessAfterSystemSettings()
+        }
         // PhotosImportPicker 不再用 SwiftUI sheet。改成 AppKit NSAlert，由
-        // `ProjectStore.presentPhotosImportPicker()` 内部直接同步 modal 弹出。
-        // 详见 `AppKitPhotosImportPicker` 类型注释中的 5 轮迭代踩坑总结。
+        // `presentPhotosImportPicker()` 在主线程同步弹 NSAlert（仅张数调试路径）。
         .overlay(alignment: .bottom) {
             if let progress = store.importProgress, store.isImporting || progress.phase == .paused {
                 ImportProgressView(progress: progress)
@@ -93,6 +96,7 @@ struct ContentView: View {
         } message: { prompt in
             Text(prompt.message)
         }
+        .lumaPhotosAccessGuidanceAlert(store: store)
         .alert(
             "操作失败",
             isPresented: Binding(

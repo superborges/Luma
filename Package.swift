@@ -25,6 +25,9 @@ let package = Package(
                 .copy("Resources")
             ],
             swiftSettings: [
+                // 减轻 Swift 6 strict concurrency 在闭包上注入的 runtime isolation 检查
+                // （系统 SwiftUI 预编译产物理不到，本设置仍降低**应用自身**闭包/回调里的检查面）。
+                .swiftLanguageMode(.v5),
                 // macOS 26 / Swift 6.2 / arm64e：编译器在 SwiftUI view body 闭包等位置
                 // 注入 actor isolation runtime check（swift_task_isCurrentExecutorWithFlagsImpl），
                 // 但系统 libswift_Concurrency.dylib 在走 SerialExecutor.isMainExecutor

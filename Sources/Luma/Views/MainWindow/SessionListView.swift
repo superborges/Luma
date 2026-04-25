@@ -119,7 +119,44 @@ private struct SessionRow: View {
     let onOpen: () -> Void
     let onArchiveToggle: () -> Void
 
+    // 不要在此使用 `Button` / `.onTapGesture` / 叠加手势：`AppKitEventBindingBridge.flushActions` 会在
+    // macOS 26 / Swift 6.2 经该路径回写 SwiftUI 时触发 `SessionRow` body 里闭包的 executor 校验
+    // → `swift_task_isCurrentExecutorWithFlagsImpl` + `pc=0`（见 KNOWN_ISSUES Round 10）。
+    // 主区域用 `NSView.mouseDown`（`SessionRowOpenHitView`）打开，视觉层 `.allowsHitTesting(false)`。
     var body: some View {
+        HStack(spacing: 16) {
+            ZStack(alignment: .leading) {
+                rowContent
+                    .allowsHitTesting(false)
+                SessionRowOpenHitView(onOpen: onOpen)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            Menu {
+                Button("打开") { onOpen() }
+                    .disabled(!summary.isOpenable)
+                Divider()
+                Button(summary.isArchived ? "取消归档" : "归档") { onArchiveToggle() }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(StitchTheme.onSurfaceVariant)
+                    .padding(8)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+        .opacity(summary.isArchived ? 0.6 : 1)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(StitchTheme.surfaceContainer)
+        )
+    }
+
+    private var rowContent: some View {
         HStack(spacing: 16) {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(StitchTheme.surfaceContainerHigh)
@@ -160,36 +197,10 @@ private struct SessionRow: View {
                 }
             }
             Spacer(minLength: 0)
-            Menu {
-                Button("打开") { onOpen() }
-                    .disabled(!summary.isOpenable)
-                Divider()
-                Button(summary.isArchived ? "取消归档" : "归档") { onArchiveToggle() }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(StitchTheme.onSurfaceVariant)
-                    .padding(8)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
             Image(systemName: "chevron.right")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(StitchTheme.onSurfaceVariant.opacity(0.6))
         }
-        .opacity(summary.isArchived ? 0.6 : 1)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(StitchTheme.surfaceContainer)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { onOpen() }
-        .onTapGesture { onOpen() }
-        .accessibilityAction(named: "打开") { onOpen() }
-        .accessibilityAction(named: summary.isArchived ? "取消归档" : "归档") { onArchiveToggle() }
     }
 
     private var progressBar: some View {

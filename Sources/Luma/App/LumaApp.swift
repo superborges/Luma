@@ -79,20 +79,26 @@ struct LumaApp: App {
 /// （`AppActivationDelegate.applicationDidBecomeActive` 内的
 /// `NSApp.windows.first(where:)` 闭包）都是同一根因，详见 `KNOWN_ISSUES.md`。
 ///
-/// 解决：类本身 nonisolated，AppKit 反正在 main thread 调用我们；方法内显式
-/// `MainActor.assumeIsolated { ... }` 拿到 main actor 上下文做实际工作。这样：
-/// - `@objc` prologue 不再插 actor isolation check（无 PAC 失败风险）。
-/// - 内部 closure（如 `first(where:)` 谓词）不再隐式继承 actor 隔离，不再被 thunk 包装。
+/// 类保持 nonisolated、delegate 方法不加 `@MainActor`，避免 Round 7/8 的 `@objc` 入口 PAC 问题。
+/// **不要**在 ObjC 回调里同步 `MainActor.assumeIsolated`：主线程上仍可能无 MainActor **任务**上下文，
+/// 会 `_assertionFailure`（.ips: EXC_BREAKPOINT → assumeIsolated → `applicationDidBecomeActive`），
+/// NSAlert/照片 模态结束也会走该路径。用 `Task { @MainActor in }` 显式投到 MainActor。
 final class AppActivationDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        MainActor.assumeIsolated { activateApp() }
+        Task { @MainActor in
+            self.activateApp()
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            MainActor.assumeIsolated { self?.activateApp() }
+            Task { @MainActor in
+                self?.activateApp()
+            }
         }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
-        MainActor.assumeIsolated { activateApp() }
+        Task { @MainActor in
+            self.activateApp()
+        }
     }
 
     @MainActor

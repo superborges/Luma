@@ -170,6 +170,8 @@ final class ProjectStore {
         didSet { invalidateSelectionDerivedState() }
     }
     var pendingImportPrompt: PendingImportPrompt?
+    /// 照片权限/导入占用的主窗口内 SwiftUI 提示；勿用 `NSAlert`，以免与主界面风格割裂。
+    var photosAccessGuidance: PhotosAccessGuidance?
     var recoverableImportSession: ImportSession?
     var importProgress: ImportProgress?
     var isImporting = false
@@ -572,147 +574,141 @@ final class ProjectStore {
         }
     }
 
-    /// PRD「Mac · 照片 App」picker：两步式流程，全程用 AppKit NSAlert。
-    ///
-    /// 流程：
-    /// 1. 走 PhotoKit 授权流程（如未授权）。
-    /// 2. 弹 picker NSAlert：用户选 (date preset, smart album, limit)，点继续 / 取消。
-    /// 3. 估算总数和占用（PhotosImportPlanner.estimate）。
-    /// 4. 弹"确认导入 X 张约 Y MB"二次确认 NSAlert。
-    /// 5. 用户确认 → 走 ImportManager。
-    ///
-    /// **为什么走 AppKit 而不是 SwiftUI sheet：** 见 `AppKitPhotosImportPicker` 类型注释。
-    /// 简言之：SwiftUI sheet 内的 view 在 macOS 26 / SwiftUI 7.3 / Swift 6.2 / arm64e 上
-    /// 一旦做异步 state mutation + body 重求值，就有概率撞 PAC failure，5 轮迭代都没修好。
+    /// 「Mac · 照片 App」— **调试用极简路径**（仅选张数）：
+    /// 授权 → 单个 NSAlert（下拉选 N）→ 直接导入；无完整 picker、无 `PhotosImportPlanner.estimate`、无第二段确认。
+    /// 全时间范围、`dedupe` 关闭，减少 PhotoKit/模态/回调面，便于对照崩溃（见 `AppKitPhotosCountOnlyPicker`）。
     func presentPhotosImportPicker() async {
-        guard !isImporting else { return }
+        guard !isImporting else {
+            traceEvent("photos_import_skipped_busy", category: "import", metadata: [:])
+            photosAccessGuidance = .importInProgress
+            return
+        }
+        let flowID = UUID().uuidString
+        ImportPathBreadcrumb.mark("photos_import_flow_start", ["flow_id": flowID, "mode": "count_only"])
         let authorized = await ensurePhotosLibraryAuthorization()
         guard authorized else {
+            ImportPathBreadcrumb.mark("photos_import_auth_denied", ["flow_id": flowID])
+            if photosAccessGuidance == nil { photosAccessGuidance = .accessDenied }
             traceEvent(
                 "photos_import_picker_aborted_no_permission",
                 category: "import",
-                metadata: ["reason": "user_denied_or_restricted"]
+                metadata: [
+                    "guidance": photosAccessGuidance?.rawValue ?? "nil"
+                ]
             )
             return
         }
-        let initialPlan = PhotosImportPlan.makeDefault()
-        // 在 picker 弹出前一次性拉取用户相册（按修改时间倒序）。规模通常 < 几十个；
-        // 即便上百个，也只是字符串数组，开销可忽略。
-        let userAlbums = await PhotosImportPlanner.userAlbums()
-        // 收集当前 project 所有 sessions 中已导入过的 PHAsset.localIdentifier，用于去重。
-        let excludedIDs = collectImportedPhotosIdentifiers()
+        ImportPathBreadcrumb.mark("photos_import_auth_ok", ["flow_id": flowID])
 
+        ImportPathBreadcrumb.mark("photos_count_only_modal_before", ["flow_id": flowID])
+        guard let limit = AppKitPhotosCountOnlyPicker.presentBlocking() else {
+            ImportPathBreadcrumb.mark("photos_picker_cancelled", ["flow_id": flowID, "mode": "count_only"])
+            traceEvent("photos_import_picker_outcome_cancelled", category: "import", metadata: ["mode": "count_only"])
+            return
+        }
+
+        let plan = PhotosImportPlan(
+            id: UUID(),
+            datePreset: .allTime,
+            smartAlbum: nil,
+            userAlbumLocalIdentifier: nil,
+            userAlbumTitle: nil,
+            mediaTypeFilter: .all,
+            limit: limit,
+            dedupeAgainstCurrentProject: false
+        )
+        ImportPathBreadcrumb.mark("photos_count_only_confirmed", ["flow_id": flowID, "plan_id": plan.id.uuidString, "limit": String(limit)])
         traceEvent(
-            "photos_import_picker_opened",
+            "photos_import_count_only",
             category: "import",
             metadata: [
-                "plan_id": initialPlan.id.uuidString,
-                "user_albums": String(userAlbums.count),
-                "excluded_ids": String(excludedIDs.count)
+                "plan_id": plan.id.uuidString,
+                "limit": String(limit)
             ]
         )
+        await confirmPhotosImport(plan, excludedLocalIdentifiers: [])
+    }
 
-        let outcome = AppKitPhotosImportPicker.presentBlocking(
-            initialPlan: initialPlan,
-            userAlbums: userAlbums
-        )
-        switch outcome {
-        case .cancelled:
-            traceEvent(
-                "photos_import_picker_outcome_cancelled",
-                category: "import",
-                metadata: ["plan_id": initialPlan.id.uuidString]
-            )
+    /// 以 `readWrite` 级为准；若系统只给「仅添加」而读图库仍为拒绝，会提示与「无权限」不同的说明。
+    private func applyPhotosAuthGuidanceOnFailure(
+        readWrite: PHAuthorizationStatus,
+        addOnly: PHAuthorizationStatus
+    ) {
+        if readWrite == .restricted {
+            photosAccessGuidance = .accessDenied
             return
-        case .confirmed(let plan):
-            traceEvent(
-                "photos_import_picker_outcome_confirmed",
-                category: "import",
-                metadata: [
-                    "plan_id": plan.id.uuidString,
-                    "date_preset": plan.datePreset.label,
-                    "smart_album": plan.smartAlbum?.rawValue ?? "none",
-                    "user_album": plan.userAlbumLocalIdentifier ?? "none",
-                    "media": plan.mediaTypeFilter.rawValue,
-                    "limit": String(plan.limit),
-                    "dedupe": plan.dedupeAgainstCurrentProject ? "1" : "0"
-                ]
-            )
-
-            let exclusionSet: Set<String> = plan.dedupeAgainstCurrentProject ? excludedIDs : []
-            let estimate = await PhotosImportPlanner.estimate(
-                dateRange: plan.dateRange,
-                smartAlbumSubtype: plan.smartAlbumSubtype,
-                userAlbumLocalIdentifier: plan.userAlbumLocalIdentifier,
-                mediaTypeFilter: plan.mediaTypeFilter,
-                limit: plan.limit,
-                excludedLocalIdentifiers: exclusionSet
-            )
-            traceEvent(
-                "photos_import_picker_estimate_ended",
-                category: "import",
-                metadata: [
-                    "plan_id": plan.id.uuidString,
-                    "total": String(estimate.totalAssetCount),
-                    "deduped": String(estimate.dedupedSkippedCount),
-                    "cloud_only": String(estimate.cloudOnlyCount),
-                    "bytes": String(estimate.estimatedDiskBytes)
-                ]
-            )
-
-            let confirmed = AppKitPhotosImportPicker.presentEstimateConfirmation(estimate: estimate)
-            guard confirmed else {
-                traceEvent(
-                    "photos_import_picker_estimate_declined",
-                    category: "import",
-                    metadata: ["plan_id": plan.id.uuidString]
-                )
-                return
-            }
-
-            await confirmPhotosImport(plan, excludedLocalIdentifiers: exclusionSet)
+        }
+        if readWrite == .denied, addOnly == .authorized || addOnly == .limited {
+            photosAccessGuidance = .needFullLibraryRead
+        } else {
+            photosAccessGuidance = .accessDenied
         }
     }
 
-    /// 遍历当前 project 全部 sessions，收集所有 source = .photosLibrary 的资产 localIdentifier。
-    /// 用于 picker 的"跳过本项目已导入过"去重。
-    private func collectImportedPhotosIdentifiers() -> Set<String> {
-        var ids: Set<String> = []
-        for session in sessions {
-            for asset in session.assets {
-                if case .photosLibrary(let localIdentifier) = asset.source {
-                    ids.insert(localIdentifier)
-                }
-            }
-        }
-        return ids
-    }
-
-    /// 同步触发授权对话框（如果是 .notDetermined），返回最终是否拿到读权限。
-    /// 写入用 picker → 提交 → ImportManager 路径会再请求一次（写权限），这里只解决读。
+    /// 在状态为 `.notDetermined` 时调用 `requestAuthorization`，会由**系统**弹出 TCC 授权窗（与「旧版」一致）。
+    /// 导入需要 `readWrite`；若图库为「仅添加」、读权限仍为 denied，会设置 `needFullLibraryRead`。
     private func ensurePhotosLibraryAuthorization() async -> Bool {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        if status == .authorized || status == .limited {
+        let readWrite = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        let addOnly = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        var authMeta: [String: String] = [
+            "readwrite": String(readWrite.rawValue),
+            "addonly": String(addOnly.rawValue)
+        ]
+        if let p = Bundle.main.executablePath {
+            authMeta["main_executable"] = p
+        }
+        traceEvent("photos_auth_readwrite_addonly", category: "import", metadata: authMeta)
+        if readWrite == .authorized || readWrite == .limited {
             return true
         }
-        if status == .denied || status == .restricted {
-            // 已经被拒，没必要再触发系统对话框；直接告失败。UI 层后续可以提示用户去设置里改。
+        if readWrite == .denied || readWrite == .restricted {
+            applyPhotosAuthGuidanceOnFailure(readWrite: readWrite, addOnly: addOnly)
             return false
         }
-        let resolved: PHAuthorizationStatus = await withCheckedContinuation { continuation in
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
-                continuation.resume(returning: newStatus)
+        if readWrite == .notDetermined {
+            let resolved: PHAuthorizationStatus = await withCheckedContinuation { continuation in
+                PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
+                    DispatchQueue.main.async {
+                        continuation.resume(returning: newStatus)
+                    }
+                }
             }
+            let addAfter = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+            traceEvent(
+                "photos_auth_request_result",
+                category: "import",
+                metadata: [
+                    "readwrite": String(resolved.rawValue),
+                    "addonly": String(addAfter.rawValue)
+                ]
+            )
+            if resolved == .authorized || resolved == .limited {
+                return true
+            }
+            applyPhotosAuthGuidanceOnFailure(readWrite: resolved, addOnly: addAfter)
+            return false
         }
-        return resolved == .authorized || resolved == .limited
+        applyPhotosAuthGuidanceOnFailure(readWrite: readWrite, addOnly: addOnly)
+        return false
     }
 
-    /// Picker 用户在估算确认 alert 上点「导入」后由 `presentPhotosImportPicker()` 内部调用。
+    /// 从「系统设置」切回 Luma 时调用：若图库已改为允许读，可自动消掉“无权限”提示。
+    func refreshPhotosAccessAfterSystemSettings() {
+        let rw = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard rw == .authorized || rw == .limited else { return }
+        if photosAccessGuidance == .accessDenied || photosAccessGuidance == .needFullLibraryRead {
+            photosAccessGuidance = nil
+            traceEvent("photos_access_guidance_auto_cleared", category: "import", metadata: ["readwrite": String(rw.rawValue)])
+        }
+    }
+
+    /// 从「仅张数」或将来完整 picker 确认后，由 `presentPhotosImportPicker()` / 测试调用。
     /// 仍标 `internal`（非 private）以便测试和潜在的命令行入口直接调用。
     func confirmPhotosImport(
         _ plan: PhotosImportPlan,
         excludedLocalIdentifiers: Set<String> = []
     ) async {
+        ImportPathBreadcrumb.mark("confirm_photos_import_entry", ["plan_id": plan.id.uuidString])
         traceEvent(
             "import_requested",
             category: "import",
@@ -956,6 +952,10 @@ final class ProjectStore {
         }
         pendingImportPrompt = nil
         presentNextImportPromptIfPossible()
+    }
+
+    func dismissPhotosAccessGuidance() {
+        photosAccessGuidance = nil
     }
 
     func selectGroup(_ groupID: UUID?) {
