@@ -88,11 +88,21 @@
 - 一个 Session 可以多次导出（每次导出生成一条 ExportJob 记录）
 - 导出配置（目标/格式/未选中处理/清理策略）默认从用户上次配置继承
 - 导出失败的文件保留在 Session 里，下次导出可只重试失败项
-- 删除原图通过 PhotoKit `PHAssetChangeRequest.deleteAssets`，**Apple 强制弹系统对话框**，Luma 不能也不会绕过
 
-## 6. v1 不做的
+## 6. 与实现的对应关系（`ExportPanelView`）
+
+- 导出目标 Picker：**文件夹** / **Lightroom** / **照片 App**（与文内 Step 1 一致）。
+- **文件夹**目标：目录模板、XMP、修图建议、输出目录等；**未选照片处理** 在单独 Section，文案为 缩小保留 / 归档视频 / 忽略（与 `RejectedHandling` 中文标签一致）。
+- **照片 App** 目标：按分组建相册、合并 RAW+JPEG、保留 Live、AI 说明字段等；其中「写入 AI 评语到说明」在 UI 中有 **macOS/PhotoKit 限制** 的提示，以界面为准。
+- 若同时存在 `onlyAssetIDs`：界面会提示**仅重试失败项**（见代码）。
+- **首页**「去导出」与选片内入口以实际 `ContentView` / 工具栏为准。
+
+*Step 中未单独拆页：配置与执行为一连续表单 + 任务，不强制多 Step 页面。*  
+- 删除原图通过 PhotoKit `PHAssetChangeRequest.deleteAssets` 的，**Apple 强制系统确认**，Luma 不绕过。
+
+### 本阶段不做的
 
 - 导出到云盘（iCloud Drive / Dropbox 等）
 - 导出后自动通知（邮件/系统通知）
 - 自定义水印
-- 跨 Photos 库（多个照片图库）写入
+- 跨多个照片图库写入

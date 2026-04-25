@@ -22,7 +22,6 @@
 
 ### Step 1
 
-- 页面名：首页
-- 用户要做什么：看到所有 Import Session，选择一个 Session 继续选片，或者归档一个 Session
-- 系统展示什么： 活跃的 Session，归档的 Session，Session 的详细信息
-- 主按钮是什么：”继续选片“ 和 ”归档“按钮
+- 页面名：Session 列表（主窗口 `SessionListView`）
+- 用户要做什么：浏览全部 Session，**点行进入选片**；或选行末 **⋯** 菜单 **打开 / 归档**；**排序** 调整列表
+- 系统展示什么：每行（缩略/标题/状态/进度等，以 UI 为准）；**新建 Import Session** 为右上角 **+** 下拉（普通目录、SD 卡、**Mac·照片（仅张数）**、iPhone·USB 等，与 `ImportSourceMenuItems` 一致）

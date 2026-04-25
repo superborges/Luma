@@ -1,26 +1,4 @@
-IMPORTANT: Go straight to the point. Try the simplest approach first without going in circles. Do not overdo it. Be extra concise.
+# Luma 仓库 — Agent 提示
 
-After **any** code change that affects the macOS app, the agent must **build and launch Luma in the background** so the user can verify immediately. Prefer `scripts/run-luma.sh` (produces an ad-hoc–signed `Luma.app`; PhotoKit/TCC does not line up with a bare `swift build` binary). If that is unavailable: `swift build` then the path from `swift build --show-bin-path`. Do not skip this unless the user explicitly opts out for that turn.
-
-**User preference:** 改完后要**重启应用**再看效果——若 Luma 已在运行，先退出再打开新构建（或结束旧进程后再启动），避免仍停留在旧实例上看不到 UI 变更。
-
-UI 改动对话以 `**Artifacts/ui-regions.md`** 里的点分代号为准（例：`main.workspace.burst.chip`）；间距/圆角优先用 `**Sources/Luma/Design/AppMetrics.swift**` 的 `AppSpacing` / `AppRadius`，避免各说各话。
-
-Keep your text output brief and direct. Lead with the answer or action, not the reasoning. Skip filler words, preamble, and unnecessary transitions. Do not restate what the user said — just do it. When explaining, include only what is necessary for the user to understand.
-
-Focus text output on:
-
-- Decisions that need the user's input
-- High-level status updates at natural milestones
-- Errors or blockers that change the plan
-
-If you can say it in one sentence, don't use three. Prefer short, direct sentences over long explanations. This does not apply to code or tool calls.
-
-User profile and collaboration mode:
-
-- User is a senior software architect with 10+ years of backend experience.
-- Strong in distributed systems and DevOps.
-- Communicate at a more professional and concise level by default.
-- Do not over-explain basics unless asked.
-- It is acceptable to ask the user to do concrete supporting work when it improves speed.
-- Optimize for highest execution efficiency.
+- **改 macOS 应用**后：用 `./scripts/run-luma.sh` 打 `Luma.app` 验证（PhotoKit/TCC 与裸二进制不一致）；**详见仓库内说明**于 `README.md`。
+- **产品 / 实现范围**：`docs/MVP/Build Spec.md` 与 `docs/README.md`；**长期完整规格**见 `docs/raw/PRODUCT_SPEC.md`（篇幅大于当前实现，冲突以代码与 MVP 文档为准）。
