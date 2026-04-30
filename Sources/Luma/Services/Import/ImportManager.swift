@@ -138,8 +138,7 @@ struct ImportManager: Sendable {
         return try await importFromSource(source, progress: progress, snapshot: snapshot)
     }
 
-    /// PRD「Mac 照片 App」picker：UI 已选好筛选维度，直接走 PhotosLibraryAdapter。
-    /// `excludedLocalIdentifiers` 由 ProjectStore 在唤起 picker 时收集（当前 project 已导入过的 PHAsset）。
+    /// 月份选择导入：UI 已选好月份，直接走 PhotosLibraryAdapter（多日期范围）。
     func importPhotosLibrary(
         plan: PhotosImportPlan,
         excludedLocalIdentifiers: Set<String> = [],
@@ -148,15 +147,13 @@ struct ImportManager: Sendable {
     ) async throws -> ImportedProject {
         let displayName = plan.displayName
         let source = ImportSourceDescriptor.photosLibrary(
-            albumLocalIdentifier: plan.userAlbumLocalIdentifier,
+            albumLocalIdentifier: nil,
             limit: plan.limit,
             displayName: displayName
         )
         let adapter = PhotosLibraryAdapter(
-            albumLocalIdentifier: plan.userAlbumLocalIdentifier,
             limit: plan.limit,
-            dateRange: plan.dateRange,
-            smartAlbumSubtype: plan.smartAlbumSubtype,
+            dateRanges: plan.dateRanges,
             mediaTypeFilter: plan.mediaTypeFilter,
             excludedLocalIdentifiers: plan.dedupeAgainstCurrentProject ? excludedLocalIdentifiers : []
         )
@@ -715,8 +712,8 @@ struct ImportManager: Sendable {
             return SDCardAdapter(volumeURL: URL(filePath: volumePath))
         case .iPhone(let deviceID, let deviceName):
             return iPhoneAdapter(deviceID: deviceID, deviceName: deviceName)
-        case .photosLibrary(let albumID, let limit, _):
-            return PhotosLibraryAdapter(albumLocalIdentifier: albumID, limit: limit)
+        case .photosLibrary(_, let limit, _):
+            return PhotosLibraryAdapter(limit: limit)
         }
     }
 

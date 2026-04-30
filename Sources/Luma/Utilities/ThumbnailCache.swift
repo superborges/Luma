@@ -22,6 +22,10 @@ final class ThumbnailCache {
         memoryCache.countLimit = countLimit
     }
 
+    func updateCountLimit(_ limit: Int) {
+        memoryCache.countLimit = limit
+    }
+
     func image(for asset: MediaAsset) async -> NSImage? {
         let key = asset.id.uuidString
         if let cached = memoryImage(forKey: key) {

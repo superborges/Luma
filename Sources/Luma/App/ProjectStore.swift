@@ -88,7 +88,7 @@ private struct BurstSelectionCacheKey: Equatable {
 @MainActor
 @Observable
 final class ProjectStore {
-    private let importManager = ImportManager()
+    private let importManager: ImportManager
     private let importSourceMonitor = ImportSourceMonitor()
     private let logger = Logger(subsystem: "Luma", category: "ProjectStore")
     private let localMLScorer = LocalMLScorer()
@@ -107,6 +107,10 @@ final class ProjectStore {
     /// 首页 Session 列表排序键。默认按上次修改。持久化到 UserDefaults。
     var sessionListSort: SessionListSort = .lastModified
     private let sessionListSortDefaultsKey = "Luma.sessionListSort"
+    private let groupingTimeThresholdKey = "Luma.groupingTimeThreshold"
+    private let thumbnailCacheLimitKey = "Luma.thumbnailCacheLimit"
+    private let defaultFileNamingRuleKey = "Luma.defaultFileNamingRule"
+    // useSimplifiedPhotosPickerKey removed in v2 month-based picker refactor
     // 历史字段：var photosImportPickerPlan: PhotosImportPlan?
     // 已移除——picker 现在用 AppKit NSAlert 实现，不再走 SwiftUI sheet。
     // 见 AppKitPhotosImportPicker。SwiftUI sheet 在该 SDK 组合下无法稳定承载该 picker。
@@ -197,6 +201,8 @@ final class ProjectStore {
     var isPerformanceDiagnosticsPresented = false
     var isExportPanelPresented = false
     var isExporting = false
+    /// 每次 G 键调用 `toggleViewMode()` 时递增，View 层 onChange 驱动 `burstFocusOverride` 翻转。
+    var viewModeToggleTick: Int = 0
     var lastExportSummary: String?
     /// 最近一次导出的结构化结果。导出完成后由 `performExport` 设置；
     /// `ContentView` 据此 sheet 弹出 `ExportSummaryView`。
@@ -229,6 +235,15 @@ final class ProjectStore {
 
     init(enableImportMonitoring: Bool = true) {
         self.enableImportMonitoring = enableImportMonitoring
+
+        var engine = GroupingEngine()
+        let minutes = UserDefaults.standard.integer(forKey: "Luma.groupingTimeThreshold")
+        if minutes > 0 { engine.timeThreshold = TimeInterval(minutes * 60) }
+        self.importManager = ImportManager(groupingEngine: engine)
+
+        let cacheLimit = UserDefaults.standard.integer(forKey: "Luma.thumbnailCacheLimit")
+        if cacheLimit > 0 { ThumbnailCache.shared.updateCountLimit(cacheLimit) }
+
         loadExportSettings()
         if let raw = UserDefaults.standard.string(forKey: sessionListSortDefaultsKey),
            let sort = SessionListSort(rawValue: raw) {
@@ -443,7 +458,18 @@ final class ProjectStore {
     }
 
     var canExportPicked: Bool {
-        pickedAssetsCount > 0
+        pickedAssetsCount > 0 && isExportDestinationReady
+    }
+
+    var isExportDestinationReady: Bool {
+        switch exportOptions.destination {
+        case .folder:
+            return exportOptions.outputPath != nil
+        case .lightroom:
+            return exportOptions.lrAutoImportFolder != nil
+        case .photosApp:
+            return true
+        }
     }
 
     var archiveCandidatesCount: Int {
@@ -576,9 +602,8 @@ final class ProjectStore {
         }
     }
 
-    /// 「Mac · 照片 App」— **调试用极简路径**（仅选张数）：
-    /// 授权 → 单个 NSAlert（下拉选 N）→ 直接导入；无完整 picker、无 `PhotosImportPlanner.estimate`、无第二段确认。
-    /// 全时间范围、`dedupe` 关闭，减少 PhotoKit/模态/回调面，便于对照崩溃（见 `AppKitPhotosCountOnlyPicker`）。
+    /// 「Mac · 照片 App」— 月份选择导入。
+    /// 授权 → 后台扫描月份统计（timeout 防御）→ 月份网格选择 → 导入。
     func presentPhotosImportPicker() async {
         guard !isImporting else {
             traceEvent("photos_import_skipped_busy", category: "import", metadata: [:])
@@ -586,7 +611,7 @@ final class ProjectStore {
             return
         }
         let flowID = UUID().uuidString
-        ImportPathBreadcrumb.mark("photos_import_flow_start", ["flow_id": flowID, "mode": "count_only"])
+        ImportPathBreadcrumb.mark("photos_import_flow_start", ["flow_id": flowID, "mode": "month_picker"])
         let authorized = await ensurePhotosLibraryAuthorization()
         guard authorized else {
             ImportPathBreadcrumb.mark("photos_import_auth_denied", ["flow_id": flowID])
@@ -594,41 +619,59 @@ final class ProjectStore {
             traceEvent(
                 "photos_import_picker_aborted_no_permission",
                 category: "import",
-                metadata: [
-                    "guidance": photosAccessGuidance?.rawValue ?? "nil"
-                ]
+                metadata: ["guidance": photosAccessGuidance?.rawValue ?? "nil"]
             )
             return
         }
         ImportPathBreadcrumb.mark("photos_import_auth_ok", ["flow_id": flowID])
 
-        ImportPathBreadcrumb.mark("photos_count_only_modal_before", ["flow_id": flowID])
-        guard let limit = AppKitPhotosCountOnlyPicker.presentBlocking() else {
-            ImportPathBreadcrumb.mark("photos_picker_cancelled", ["flow_id": flowID, "mode": "count_only"])
-            traceEvent("photos_import_picker_outcome_cancelled", category: "import", metadata: ["mode": "count_only"])
+        let existingLocalIDs: Set<String> = Set(assets.compactMap { asset in
+            if case .photosLibrary(let id) = asset.source { return id }
+            return nil
+        })
+
+        var importedByMonth: [String: Int] = [:]
+        let calendar = Calendar.current
+        for asset in assets {
+            guard case .photosLibrary = asset.source else { continue }
+            let comps = calendar.dateComponents([.year, .month], from: asset.metadata.captureDate)
+            if let y = comps.year, let m = comps.month {
+                importedByMonth["\(y)-\(m)", default: 0] += 1
+            }
+        }
+
+        let capturedByMonth = importedByMonth
+        let stats = await PhotoKitSafetyWrapper.withTimeout(15.0, fallback: [PhotosImportPlanner.MonthStats]()) {
+            await PhotosImportPlanner.monthlyStats(previouslyImportedByMonth: capturedByMonth)
+        }
+
+        ImportPathBreadcrumb.mark("photos_monthly_stats_ready", [
+            "flow_id": flowID,
+            "month_count": String(stats.count),
+            "timeout": stats.isEmpty ? "maybe" : "no"
+        ])
+
+        let outcome = AppKitPhotosImportPicker.presentBlocking(monthlyStats: stats)
+        guard case .confirmed(let plan) = outcome else {
+            ImportPathBreadcrumb.mark("photos_picker_cancelled", ["flow_id": flowID, "mode": "month_picker"])
             return
         }
 
-        let plan = PhotosImportPlan(
-            id: UUID(),
-            datePreset: .allTime,
-            smartAlbum: nil,
-            userAlbumLocalIdentifier: nil,
-            userAlbumTitle: nil,
-            mediaTypeFilter: .all,
-            limit: limit,
-            dedupeAgainstCurrentProject: false
-        )
-        ImportPathBreadcrumb.mark("photos_count_only_confirmed", ["flow_id": flowID, "plan_id": plan.id.uuidString, "limit": String(limit)])
+        ImportPathBreadcrumb.mark("photos_month_picker_confirmed", [
+            "flow_id": flowID, "plan_id": plan.id.uuidString,
+            "months": String(plan.selectedMonths.count),
+            "media_filter": plan.mediaTypeFilter.rawValue
+        ])
         traceEvent(
-            "photos_import_count_only",
+            "photos_import_month_picker",
             category: "import",
             metadata: [
                 "plan_id": plan.id.uuidString,
-                "limit": String(limit)
+                "months": String(plan.selectedMonths.count),
+                "media_filter": plan.mediaTypeFilter.rawValue
             ]
         )
-        await confirmPhotosImport(plan, excludedLocalIdentifiers: [])
+        await confirmPhotosImport(plan, excludedLocalIdentifiers: existingLocalIDs)
     }
 
     /// 以 `readWrite` 级为准；若系统只给「仅添加」而读图库仍为拒绝，会提示与「无权限」不同的说明。
@@ -716,10 +759,7 @@ final class ProjectStore {
             category: "import",
             metadata: [
                 "source": "photos_library",
-                "limit": String(plan.limit),
-                "date_preset": plan.datePreset.label,
-                "smart_album": plan.smartAlbumSubtype.map { String($0.rawValue) } ?? "none",
-                "user_album": plan.userAlbumLocalIdentifier ?? "none",
+                "months": String(plan.selectedMonths.count),
                 "media": plan.mediaTypeFilter.rawValue,
                 "excluded": String(excludedLocalIdentifiers.count)
             ]
@@ -1051,6 +1091,26 @@ final class ProjectStore {
         moveSelection(by: 1)
     }
 
+    func toggleViewMode() {
+        viewModeToggleTick += 1
+    }
+
+    func acceptBurstRecommendation(for context: BurstSelectionContext) {
+        guard let bestID = context.burst.bestAssetID else { return }
+        for asset in context.burst.assets {
+            updateDecision(for: asset.id, decision: asset.id == bestID ? .picked : .rejected)
+        }
+        RuntimeTrace.event(
+            "burst_recommendation_accepted",
+            category: "culling",
+            metadata: [
+                "burst_id": context.burst.id.uuidString,
+                "best_asset_id": bestID.uuidString,
+                "burst_count": String(context.burst.count)
+            ]
+        )
+    }
+
     func clearSelectionDecision() {
         guard let selectedAssetID else { return }
         updateDecision(for: selectedAssetID, decision: .pending)
@@ -1145,20 +1205,24 @@ final class ProjectStore {
 
     func chooseExportFolder() {
         let panel = NSOpenPanel()
-        panel.title = "Choose Export Folder"
+        panel.title = "选择导出目录"
+        panel.prompt = "选择"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         exportOptions.outputPath = url
     }
 
     func chooseLightroomFolder() {
         let panel = NSOpenPanel()
-        panel.title = "Choose Lightroom Auto-Import Folder"
+        panel.title = "选择 Lightroom 自动导入目录"
+        panel.prompt = "选择"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         exportOptions.lrAutoImportFolder = url
     }
@@ -1250,7 +1314,13 @@ final class ProjectStore {
 
             exportProgress = ExportProgress(phase: .writing, completed: 0, total: pickedAssets.count, currentName: nil)
             let result = try await adapter.export(assets: assets, groups: groups, options: exportOptions)
-            let archiveSummary = try await processRejectedAssetsAfterExport()
+            var archiveSummary: String?
+            do {
+                archiveSummary = try await processRejectedAssetsAfterExport()
+            } catch {
+                logger.error("Archive after export failed (non-fatal): \(error.localizedDescription, privacy: .public)")
+                archiveSummary = "未选照片归档失败：\(error.localizedDescription)"
+            }
             saveExportSettings()
             isExportPanelPresented = false
 
@@ -1800,7 +1870,7 @@ final class ProjectStore {
         for asset in assets {
             if asset.userDecision == .picked {
                 picked += 1
-            } else if asset.userDecision == .rejected || asset.isTechnicallyRejected {
+            } else if asset.userDecision == .rejected {
                 rejected += 1
             }
 
@@ -1944,6 +2014,48 @@ final class ProjectStore {
         if let data = UserDefaults.standard.data(forKey: exportOptionsDefaultsKey),
            let options = try? JSONDecoder().decode(ExportOptions.self, from: data) {
             exportOptions = options
+        }
+    }
+
+    // MARK: - V1 Settings (UserDefaults)
+
+    var groupingTimeThresholdMinutes: Int {
+        get {
+            let v = UserDefaults.standard.integer(forKey: groupingTimeThresholdKey)
+            return v > 0 ? v : 30
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: groupingTimeThresholdKey)
+            traceEvent("settings_grouping_threshold_changed", category: "settings",
+                       metadata: ["minutes": String(newValue)])
+        }
+    }
+
+    var thumbnailCacheLimit: Int {
+        get {
+            let v = UserDefaults.standard.integer(forKey: thumbnailCacheLimitKey)
+            return v > 0 ? v : 800
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: thumbnailCacheLimitKey)
+            ThumbnailCache.shared.updateCountLimit(newValue)
+            traceEvent("settings_thumbnail_cache_limit_changed", category: "settings",
+                       metadata: ["limit": String(newValue)])
+        }
+    }
+
+    var defaultFileNamingRule: FileNamingRule {
+        get {
+            if let raw = UserDefaults.standard.string(forKey: defaultFileNamingRuleKey),
+               let rule = FileNamingRule(rawValue: raw) {
+                return rule
+            }
+            return .original
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: defaultFileNamingRuleKey)
+            traceEvent("settings_default_naming_rule_changed", category: "settings",
+                       metadata: ["rule": newValue.rawValue])
         }
     }
 

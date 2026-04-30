@@ -11,30 +11,22 @@ import Foundation
 /// - **不拉原图**：导入阶段只复制"显示版"作为 preview；原图等到导出阶段按需拉取。
 /// - **resumeKey = PHAsset.localIdentifier**：用于导出回 Photos 后定位/删除原条目。
 struct PhotosLibraryAdapter: ImportSourceAdapter {
-    /// 用户自建相册（PHAssetCollectionType.album, .albumRegular）的 localIdentifier。
-    let albumLocalIdentifier: String?
     let limit: Int
-    /// 时间范围筛选（含起止），nil = 不限。
-    let dateRange: ClosedRange<Date>?
-    /// 智能相册类型（PhotoKit 内置），nil = 不指定。与 `albumLocalIdentifier` 互斥。
-    let smartAlbumSubtype: PHAssetCollectionSubtype?
+    /// 多月份日期范围（OR 组合）；空数组 = 不限时间。
+    let dateRanges: [ClosedRange<Date>]
     /// 媒体类型筛选；与 planner 共用 NSPredicate 构造逻辑，确保两侧判定一致。
     let mediaTypeFilter: PhotosImportPlan.MediaTypeFilter
     /// enumerate 阶段排除的 PHAsset.localIdentifier 集合（用于去重当前 project 已存在）。
     let excludedLocalIdentifiers: Set<String>
 
     init(
-        albumLocalIdentifier: String? = nil,
         limit: Int = 200,
-        dateRange: ClosedRange<Date>? = nil,
-        smartAlbumSubtype: PHAssetCollectionSubtype? = nil,
+        dateRanges: [ClosedRange<Date>] = [],
         mediaTypeFilter: PhotosImportPlan.MediaTypeFilter = .all,
         excludedLocalIdentifiers: Set<String> = []
     ) {
-        self.albumLocalIdentifier = albumLocalIdentifier
         self.limit = limit
-        self.dateRange = dateRange
-        self.smartAlbumSubtype = smartAlbumSubtype
+        self.dateRanges = dateRanges
         self.mediaTypeFilter = mediaTypeFilter
         self.excludedLocalIdentifiers = excludedLocalIdentifiers
     }
@@ -54,30 +46,7 @@ struct PhotosLibraryAdapter: ImportSourceAdapter {
         ImportPathBreadcrumb.mark("photos_library_enumerate_authorized", [:])
 
         let fetchOptions = makeFetchOptions(limit: limit)
-
-        let assets: PHFetchResult<PHAsset>
-        if let albumLocalIdentifier {
-            let albums = PHAssetCollection.fetchAssetCollections(
-                withLocalIdentifiers: [albumLocalIdentifier],
-                options: nil
-            )
-            guard let album = albums.firstObject else {
-                throw LumaError.importFailed("找不到指定的相册：\(albumLocalIdentifier)")
-            }
-            assets = PHAsset.fetchAssets(in: album, options: fetchOptions)
-        } else if let smartAlbumSubtype {
-            let smartAlbums = PHAssetCollection.fetchAssetCollections(
-                with: .smartAlbum,
-                subtype: smartAlbumSubtype,
-                options: nil
-            )
-            guard let album = smartAlbums.firstObject else {
-                throw LumaError.importFailed("当前系统没有可用的智能相册。")
-            }
-            assets = PHAsset.fetchAssets(in: album, options: fetchOptions)
-        } else {
-            assets = PHAsset.fetchAssets(with: .image, options: fetchOptions)
-        }
+        let assets = PHAsset.fetchAssets(with: .image, options: fetchOptions)
 
         var candidates: [PHAsset] = []
         candidates.reserveCapacity(assets.count)
@@ -108,7 +77,7 @@ struct PhotosLibraryAdapter: ImportSourceAdapter {
         options.fetchLimit = limit
         options.predicate = NSCompoundPredicate(
             andPredicateWithSubpredicates: PhotosImportPlanner.makePredicates(
-                dateRange: dateRange,
+                dateRanges: dateRanges,
                 mediaTypeFilter: mediaTypeFilter
             )
         )

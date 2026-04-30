@@ -5,9 +5,7 @@ struct ContentView: View {
     @Bindable var store: ProjectStore
     @AppStorage("Luma.hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
     @State private var isOnboardingPresented: Bool = false
-    // 照片导入：`ProjectStore` 现走「仅张数」调试 NSAlert（见 `AppKitPhotosCountOnlyPicker`）；
-    // 完整 AppKit 多段 picker 仍保留在 `AppKitPhotosImportPicker.swift` 供以后恢复。
-    // 不再走 SwiftUI sheet，所以这里也不需要任何 outcome state / sheet modifier。
+    // 照片导入走 AppKit 月份选择器（`AppKitPhotosImportPicker`），不走 SwiftUI sheet。
 
     init(store: ProjectStore) {
         self.store = store
@@ -200,8 +198,8 @@ struct ContentView: View {
             RuntimeTrace.event("key_command_handled", category: "interaction", metadata: ["key": "tab", "action": "next_group"])
             return true
         case 49:
-            store.markSelection(.pending)
-            RuntimeTrace.event("key_command_handled", category: "interaction", metadata: ["key": "space", "action": "mark_pending"])
+            store.clearSelectionDecision()
+            RuntimeTrace.event("key_command_handled", category: "interaction", metadata: ["key": "space", "action": "clear_to_pending"])
             return true
         default:
             break
@@ -215,6 +213,14 @@ struct ContentView: View {
         case "x":
             store.markSelection(.rejected)
             RuntimeTrace.event("key_command_handled", category: "interaction", metadata: ["key": "x", "action": "reject"])
+            return true
+        case "u":
+            store.clearSelectionDecision()
+            RuntimeTrace.event("key_command_handled", category: "interaction", metadata: ["key": "u", "action": "clear_to_pending"])
+            return true
+        case "g":
+            store.toggleViewMode()
+            RuntimeTrace.event("key_command_handled", category: "interaction", metadata: ["key": "g", "action": "toggle_view_mode"])
             return true
         case "1", "2", "3", "4", "5":
             if let rating = Int(characters) {

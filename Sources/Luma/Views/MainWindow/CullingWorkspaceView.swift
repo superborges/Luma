@@ -9,8 +9,8 @@ import SwiftUI
 /// - 右：当前 Smart Group 内全部照片（Burst 折叠成 1 张代表 + 角标），下方固定 EXIF 卡。
 /// - 底：Pick / Reject / Pending + 1–5 评星 + 上一张/下一张箭头 + Session 决策进度。
 ///
-/// v1 已彻底移除 AI 视觉（confidence/AI Match/Auto Analysis/AI Best Pick）和批量操作
-/// （Pick All / 全部采纳推荐 / 连拍择优 / Reject Rest）；模型层 `aiScore` 字段保留但 UI 不展示。
+/// V1 右栏新增 AI 评分卡（AIScoreCardView）与废片标签（IssueTagsView）。
+/// 批量操作（Pick All / 全部采纳推荐 / Reject Rest）不在 V1 范围。
 struct CullingWorkspaceView: View {
     @Bindable var store: ProjectStore
     @Environment(\.openSettings) private var openSettings
@@ -39,6 +39,11 @@ struct CullingWorkspaceView: View {
         }
         .onChange(of: currentBurstID) { _, _ in
             burstFocusOverride = false
+        }
+        .onChange(of: store.viewModeToggleTick) { _, _ in
+            if store.selectedBurstContext != nil {
+                burstFocusOverride.toggle()
+            }
         }
     }
 
@@ -269,7 +274,10 @@ struct CullingWorkspaceView: View {
     private func largeImageView(_ asset: MediaAsset) -> some View {
         let isBurstContext = store.selectedBurstContext != nil
 
-        return CullingCachedLargeImage(asset: asset)
+        return CullingCachedLargeImage(asset: asset, onDoubleTap: isBurstContext ? {
+            UITrace.doubleTap("culling.center.large_image", metadata: ["action": "exit_to_burst_grid"])
+            burstFocusOverride = false
+        } : nil)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
         .overlay(alignment: .topLeading) {
@@ -289,13 +297,7 @@ struct CullingWorkspaceView: View {
             decisionBadge(for: asset)
         }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            if isBurstContext {
-                UITrace.doubleTap("culling.center.large_image", metadata: ["action": "exit_to_burst_grid"])
-                burstFocusOverride = false
-            }
-        }
-        .help(isBurstContext ? "双击回到连拍网格" : "")
+        .help(isBurstContext ? "双击回到连拍网格 · 捏合缩放" : "双击还原 · 捏合缩放")
         .lumaTrack(
             "culling.center.large_image",
             kind: "image",
@@ -321,6 +323,14 @@ struct CullingWorkspaceView: View {
                     .foregroundStyle(Color.white.opacity(0.9))
                     .textCase(.uppercase)
                     .tracking(1.0)
+                if burst.bestAssetID != nil {
+                    Button("采纳推荐") {
+                        store.acceptBurstRecommendation(for: context)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                    .controlSize(.small)
+                }
                 Spacer()
                 Text("第 \(context.burstIndex + 1) / \(context.burstCount) 组")
                     .font(StitchTypography.font(size: 10, weight: .regular))
@@ -336,7 +346,8 @@ struct CullingWorkspaceView: View {
                     ForEach(burst.assets) { asset in
                         BurstGridTile(
                             asset: asset,
-                            isSelected: store.selectedAssetID == asset.id
+                            isSelected: store.selectedAssetID == asset.id,
+                            isBestAsset: asset.id == burst.bestAssetID
                         ) {
                             UITrace.tap(
                                 "culling.center.burst_grid.tile[\(asset.id.uuidString)]",
@@ -451,7 +462,16 @@ struct CullingWorkspaceView: View {
 
             Divider().background(Color.white.opacity(0.05))
 
-            exifCard
+            ScrollView {
+                VStack(spacing: 0) {
+                    exifCard
+                    if store.selectedAsset != nil {
+                        Divider().background(Color.white.opacity(0.05))
+                        AIScoreCardView(aiScore: store.selectedAsset?.aiScore)
+                        IssueTagsView(issues: store.selectedAsset?.issues ?? [])
+                    }
+                }
+            }
         }
         .background(StitchTheme.surfaceContainer)
         .overlay(alignment: .leading) {
@@ -493,7 +513,7 @@ struct CullingWorkspaceView: View {
         }
     }
 
-    /// 当前选中图的 EXIF 信息卡（无 AI 评分）。
+    /// 当前选中图的 EXIF 信息卡。AI 评分已移至独立 AIScoreCardView。
     private var exifCard: some View {
         let asset = store.selectedAsset
         let exif = asset?.metadata
@@ -627,12 +647,12 @@ struct CullingWorkspaceView: View {
 
                 actionButton(
                     title: "待定",
-                    subtitle: "␣",
+                    subtitle: "U",
                     color: LumaSemantic.pending,
                     isActive: asset?.userDecision == .pending
                 ) {
                     UITrace.tap("culling.bottom.action.pending")
-                    store.markSelection(.pending)
+                    store.clearSelectionDecision()
                 }
                 .lumaTrack("culling.bottom.action.pending", kind: "button")
 
@@ -913,41 +933,64 @@ private struct SmartGroupCellTile: View {
     let isSelected: Bool
     let onTap: () -> Void
 
+    private var decision: Decision { cell.coverAsset.userDecision }
+
     var body: some View {
         Button(action: onTap) {
-            ZStack(alignment: .topTrailing) {
+            ZStack {
                 CullingThumbnailView(asset: cell.coverAsset)
-                    .frame(height: 96)
-                    .frame(maxWidth: .infinity)
+                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                     .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
 
-                if case .burst(let burst) = cell {
-                    HStack(spacing: 3) {
-                        Image(systemName: "square.stack.3d.up.fill")
-                            .font(.system(size: 9, weight: .bold))
-                        Text("\(burst.count)")
-                            .font(StitchTypography.font(size: 9, weight: .bold).monospacedDigit())
+                if decision == .rejected {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(Color.black.opacity(0.45))
+                }
+
+                VStack {
+                    HStack {
+                        Spacer()
+                        if case .burst(let burst) = cell {
+                            HStack(spacing: 3) {
+                                Image(systemName: "square.stack.3d.up.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("\(burst.count)")
+                                    .font(StitchTypography.font(size: 9, weight: .bold).monospacedDigit())
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(LumaSemantic.burst.opacity(0.9), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                            .padding(4)
+                        }
                     }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(LumaSemantic.burst.opacity(0.9), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                    Spacer()
+                    HStack {
+                        decisionDot(for: decision)
+                        Spacer()
+                    }
                     .padding(4)
                 }
-
-                decisionDot(for: cell.coverAsset.userDecision)
             }
-            .opacity(isSelected ? 1 : 0.85)
+            .aspectRatio(1, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
             .overlay {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .stroke(StitchTheme.primary, lineWidth: 2)
-                }
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(borderColor, lineWidth: isSelected ? 2.5 : (decision != .pending ? 2 : 0))
             }
+            .opacity(isSelected ? 1 : (decision == .rejected ? 0.65 : 0.85))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private var borderColor: Color {
+        if isSelected { return StitchTheme.primary }
+        switch decision {
+        case .picked: return LumaSemantic.pick
+        case .rejected: return LumaSemantic.reject.opacity(0.7)
+        case .pending: return .clear
+        }
     }
 
     @ViewBuilder
@@ -972,45 +1015,117 @@ private struct SmartGroupCellTile: View {
 }
 
 /// 中央单张大图：走 `DisplayImageCache`，与 `ProjectStore` 预热同源，避免 `AsyncImage` 无限 loading。
+/// 支持双指捏合缩放 + 拖动平移 + 双击还原 1:1。
 private struct CullingCachedLargeImage: View {
     let asset: MediaAsset
+    var onDoubleTap: (() -> Void)?
 
     @State private var image: NSImage?
     @State private var loadFailed = false
 
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
     var body: some View {
-        ZStack {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-            } else if loadFailed {
-                VStack(spacing: 10) {
-                    Image(systemName: "photo.badge.exclamationmark")
-                        .font(.system(size: 40, weight: .regular))
-                        .foregroundStyle(Color(white: 0.35))
-                    Text("无法加载图片")
-                        .font(StitchTypography.font(size: 12, weight: .regular))
-                        .foregroundStyle(Color(white: 0.45))
-                    if asset.primaryDisplayURL == nil {
-                        Text("没有可用的图片资源路径")
-                            .font(StitchTypography.font(size: 11, weight: .regular))
+        GeometryReader { geo in
+            ZStack {
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .scaleEffect(scale)
+                        .offset(offset)
+                        .gesture(magnification(in: geo.size))
+                        .gesture(drag(in: geo.size))
+                        .onTapGesture(count: 2) {
+                            if scale > 1.05 {
+                                resetZoom()
+                            } else if let onDoubleTap {
+                                onDoubleTap()
+                            } else {
+                                resetZoom()
+                            }
+                        }
+                } else if loadFailed {
+                    VStack(spacing: 10) {
+                        Image(systemName: "photo.badge.exclamationmark")
+                            .font(.system(size: 40, weight: .regular))
                             .foregroundStyle(Color(white: 0.35))
+                        Text("无法加载图片")
+                            .font(StitchTypography.font(size: 12, weight: .regular))
+                            .foregroundStyle(Color(white: 0.45))
+                        if asset.primaryDisplayURL == nil {
+                            Text("没有可用的图片资源路径")
+                                .font(StitchTypography.font(size: 11, weight: .regular))
+                                .foregroundStyle(Color(white: 0.35))
+                        }
                     }
+                    .multilineTextAlignment(.center)
+                    .padding()
+                } else {
+                    ProgressView()
+                        .tint(StitchTheme.primary)
                 }
-                .multilineTextAlignment(.center)
-                .padding()
-            } else {
-                ProgressView()
-                    .tint(StitchTheme.primary)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .clipShape(Rectangle())
         .task(id: asset.id) {
+            resetZoom()
             loadFailed = false
             image = nil
             let loaded = await DisplayImageCache.shared.image(for: asset)
             image = loaded
             loadFailed = loaded == nil
+        }
+    }
+
+    private func magnification(in size: CGSize) -> some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                let newScale = lastScale * value.magnification
+                scale = min(max(newScale, 1), 10)
+            }
+            .onEnded { value in
+                lastScale = scale
+                if scale <= 1.05 { resetZoom() }
+            }
+    }
+
+    private func drag(in size: CGSize) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                guard scale > 1 else { return }
+                offset = CGSize(
+                    width: lastOffset.width + value.translation.width,
+                    height: lastOffset.height + value.translation.height
+                )
+            }
+            .onEnded { _ in
+                clampOffset(in: size)
+            }
+    }
+
+    private func clampOffset(in containerSize: CGSize) {
+        let maxX = max((containerSize.width * (scale - 1)) / 2, 0)
+        let maxY = max((containerSize.height * (scale - 1)) / 2, 0)
+        withAnimation(.easeOut(duration: 0.15)) {
+            offset = CGSize(
+                width: min(max(offset.width, -maxX), maxX),
+                height: min(max(offset.height, -maxY), maxY)
+            )
+        }
+        lastOffset = offset
+    }
+
+    private func resetZoom() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            scale = 1
+            lastScale = 1
+            offset = .zero
+            lastOffset = .zero
         }
     }
 }
@@ -1019,32 +1134,66 @@ private struct CullingCachedLargeImage: View {
 private struct BurstGridTile: View {
     let asset: MediaAsset
     let isSelected: Bool
+    var isBestAsset: Bool = false
     let onTap: () -> Void
     let onDoubleTap: () -> Void
+
+    private var tileDecision: Decision { asset.userDecision }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             CullingThumbnailView(asset: asset)
-                // 先占满「格子」再裁切；避免大图 intrinsic 尺寸把 LazyVGrid 撑满一行，导致
-                // `.lumaTrack` 里 GeometryReader 报出 800+ pt 宽、与邻格重叠的假 frame。
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .clipped()
 
-            decisionCorner(for: asset.userDecision)
+            if tileDecision == .rejected {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.black.opacity(0.4))
+            }
+
+            decisionCorner(for: tileDecision)
                 .padding(6)
+
+            if isBestAsset {
+                Text("AI")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.blue, in: Capsule())
+                    .padding(6)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(3.0 / 2.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .stroke(isSelected ? StitchTheme.primary : Color.clear, lineWidth: isSelected ? 3 : 2)
+                .stroke(tileBorderColor, lineWidth: tileBorderWidth)
         }
-        .opacity(isSelected ? 1 : 0.85)
+        .opacity(isSelected ? 1 : (tileDecision == .rejected ? 0.65 : 0.85))
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: onDoubleTap)
         .onTapGesture(count: 1, perform: onTap)
         .help("单击选中 · 双击放大")
+    }
+
+    private var tileBorderColor: Color {
+        if isSelected { return StitchTheme.primary }
+        switch tileDecision {
+        case .picked: return LumaSemantic.pick
+        case .rejected: return LumaSemantic.reject.opacity(0.7)
+        case .pending: return isBestAsset ? Color.blue.opacity(0.7) : .clear
+        }
+    }
+
+    private var tileBorderWidth: CGFloat {
+        if isSelected { return 3 }
+        switch tileDecision {
+        case .picked, .rejected: return 2
+        case .pending: return isBestAsset ? 2 : 0
+        }
     }
 
     @ViewBuilder

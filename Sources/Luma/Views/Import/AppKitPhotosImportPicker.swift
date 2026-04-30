@@ -1,454 +1,254 @@
 import AppKit
 import Foundation
 
-/// PhotosImportPicker 的 AppKit 实现，**完全替代** SwiftUI 版本。
+/// 照片导入月份选择器 — 按年翻页，纯 AppKit modal。
 ///
-/// ## 为什么不用 SwiftUI（macOS 26 / SwiftUI 7.3 / Swift 6.2 / arm64e）
-///
-/// SwiftUI 版本的 `PhotosImportPickerView` 经历了 5 轮崩溃迭代，每修一条路径就崩在新路径上。
-/// 详见 `KNOWN_ISSUES.md` Round 1–5。结论：该 SDK 组合下，只要 SwiftUI sheet 里的 view 在
-/// sheet 显示后做异步 state mutation + body 重求值，就有概率撞 PAC failure，无法在 SwiftUI
-/// 内规避。
-///
-/// ## AppKit 路径
-///
-/// 用 `NSAlert + accessoryView` 完全模态阻塞 main runloop。链路上：
-/// - 没有 SwiftUI view body / ViewBuilder closure / @MainActor isolation thunk
-/// - 没有 sheet container / sheet stacking timing
-/// - 没有 Swift Concurrency Task 创建 + executor switch
-/// - 控件全是 NSAlert 标准 control（NSSegmentedControl / NSPopUpButton / NSDatePicker），
-///   稳定数十年。
-///
-/// 取舍：picker 上不再做"实时预估"。改为：用户选完点继续 → 异步估算 → 再弹一个 NSAlert
-/// 二次确认（"将导入 X 张约 Y MB，确认？"）→ 才真正触发导入。这是更稳的两步式流程，反而
-/// 比单 sheet 内实时刷新更不容易误操作。
-/// **不**标 `@MainActor`：否则 `SegmentedToggleTarget` 的 `onChange` 会隐式变成 MainActor 闭包，
-/// 从 ObjC selector 回调进来时多一道 `swift_task_isCurrentExecutor` 链，和 Round 8/10 同类崩溃。
-/// 本模块只应在 main 线程用 `NSAlert.runModal`；入口用 `precondition(Thread.isMainThread)`。
+/// 每页最多 12 个月，用 ◀/▶ 切换年份，无滚动。
+/// **不标 `@MainActor`**：避免 ObjC selector 回调 PAC 崩溃。
 enum AppKitPhotosImportPicker {
-    /// 时间预设的固定段（自定义除外，单独处理）。
-    private enum DatePresetTab: Int, CaseIterable {
-        case last7
-        case last30
-        case last90
-        case allTime
-        case custom
 
-        var label: String {
-            switch self {
-            case .last7: return "最近 7 天"
-            case .last30: return "最近 30 天"
-            case .last90: return "最近 90 天"
-            case .allTime: return "不限"
-            case .custom: return "自定义"
-            }
-        }
-    }
-
-    private enum MediaTab: Int, CaseIterable {
-        case all
-        case staticOnly
-        case liveOnly
-
-        var filter: PhotosImportPlan.MediaTypeFilter {
-            switch self {
-            case .all: return .all
-            case .staticOnly: return .staticOnly
-            case .liveOnly: return .liveOnly
-            }
-        }
-
-        static func index(for filter: PhotosImportPlan.MediaTypeFilter) -> Int {
-            switch filter {
-            case .all: return MediaTab.all.rawValue
-            case .staticOnly: return MediaTab.staticOnly.rawValue
-            case .liveOnly: return MediaTab.liveOnly.rawValue
-            }
-        }
-    }
-
-    private static let limitOptions: [Int] = [200, 500, 1000, 2000, 10_000]
-
-    /// Modal 同步弹出 picker；阻塞 main runloop 直到用户点继续 / 取消。
-    /// 必须在 main thread 调用（`@MainActor` 已经强制）。
-    ///
-    /// - Parameters:
-    ///   - initialPlan: 默认值，UI 会回填到对应控件。
-    ///   - userAlbums: 当前 PhotoKit 的用户自建相册（按修改时间倒序）。空数组时 popup 只显示智能相册。
     static func presentBlocking(
-        initialPlan: PhotosImportPlan,
-        userAlbums: [PhotosImportPlanner.UserAlbumOption]
+        monthlyStats: [PhotosImportPlanner.MonthStats]
     ) -> PhotosImportPickerOutcome {
-        precondition(Thread.isMainThread, "AppKitPhotosImportPicker.presentBlocking must be called on main")
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = "从照片 App 导入"
-        alert.informativeText = "组合多个筛选条件用 AND 叠加。点「估算并继续」会先告诉你将导入多少张、占多少磁盘，再让你确认。"
-        alert.addButton(withTitle: "估算并继续")
-        alert.addButton(withTitle: "取消")
+        precondition(Thread.isMainThread)
+        NSApp.activate(ignoringOtherApps: true)
 
-        // ── 时间区间 ────────────────────
-        let dateSegmented = NSSegmentedControl(
-            labels: DatePresetTab.allCases.map(\.label),
-            trackingMode: .selectOne,
-            target: nil,
-            action: nil
-        )
-        dateSegmented.segmentStyle = .rounded
-        let initialDateTab = Self.dateTab(for: initialPlan.datePreset)
-        dateSegmented.selectedSegment = initialDateTab.rawValue
-
-        let startPicker = NSDatePicker()
-        startPicker.datePickerStyle = .textFieldAndStepper
-        startPicker.datePickerElements = [.yearMonthDay]
-        startPicker.controlSize = .small
-        let endPicker = NSDatePicker()
-        endPicker.datePickerStyle = .textFieldAndStepper
-        endPicker.datePickerElements = [.yearMonthDay]
-        endPicker.controlSize = .small
-
-        let initialRange = Self.initialCustomRange(from: initialPlan.datePreset)
-        startPicker.dateValue = initialRange.start
-        endPicker.dateValue = initialRange.end
-
-        let customRow = NSStackView(views: [
-            NSTextField(labelWithString: "起"),
-            startPicker,
-            NSTextField(labelWithString: "至"),
-            endPicker
-        ])
-        customRow.orientation = .horizontal
-        customRow.alignment = .firstBaseline
-        customRow.spacing = 6
-        customRow.isHidden = (initialDateTab != .custom)
-
-        let dateTarget = SegmentedToggleTarget { selectedIndex in
-            let tab = DatePresetTab(rawValue: selectedIndex) ?? .allTime
-            customRow.isHidden = (tab != .custom)
-        }
-        dateSegmented.target = dateTarget
-        dateSegmented.action = #selector(SegmentedToggleTarget.segmentedChanged(_:))
-
-        // ── 相册（智能相册 + 用户自建相册）─────
-        let albumPopup = NSPopUpButton(frame: .zero, pullsDown: false)
-        Self.populateAlbumPopup(albumPopup, smart: PhotosImportPlanner.smartAlbums, user: userAlbums)
-        Self.selectAlbum(in: albumPopup, plan: initialPlan)
-
-        // ── 媒体类型 ──────────────────
-        let mediaSegmented = NSSegmentedControl(
-            labels: MediaTab.allCases.map { tab -> String in
-                switch tab {
-                case .all: return PhotosImportPlan.MediaTypeFilter.all.label
-                case .staticOnly: return PhotosImportPlan.MediaTypeFilter.staticOnly.label
-                case .liveOnly: return PhotosImportPlan.MediaTypeFilter.liveOnly.label
-                }
-            },
-            trackingMode: .selectOne,
-            target: nil,
-            action: nil
-        )
-        mediaSegmented.segmentStyle = .rounded
-        mediaSegmented.selectedSegment = MediaTab.index(for: initialPlan.mediaTypeFilter)
-
-        // ── 上限 ───────────────────
-        let limitSegmented = NSSegmentedControl(
-            labels: limitOptions.map { "\($0)" },
-            trackingMode: .selectOne,
-            target: nil,
-            action: nil
-        )
-        limitSegmented.segmentStyle = .rounded
-        if let idx = limitOptions.firstIndex(of: initialPlan.limit) {
-            limitSegmented.selectedSegment = idx
-        } else {
-            limitSegmented.selectedSegment = limitOptions.firstIndex(of: 500) ?? 1
-        }
-
-        // ── 去重 ───────────────────
-        let dedupeCheckbox = NSButton(checkboxWithTitle: "跳过本项目已导入过的照片", target: nil, action: nil)
-        dedupeCheckbox.state = initialPlan.dedupeAgainstCurrentProject ? .on : .off
-
-        // ── 组装 stack ────────────────
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 12
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.addArrangedSubview(labeledRow(title: "时间区间", control: dateSegmented, fullWidth: true))
-        stack.addArrangedSubview(customRow)
-        stack.addArrangedSubview(labeledRow(title: "相册", control: albumPopup, fullWidth: true))
-        stack.addArrangedSubview(labeledRow(title: "媒体类型", control: mediaSegmented, fullWidth: true))
-        stack.addArrangedSubview(labeledRow(title: "本次最多导入", control: limitSegmented, fullWidth: true))
-        stack.addArrangedSubview(dedupeCheckbox)
-
-        // accessoryView 需要明确 frame；520x340 经验值能容纳 6 行 + 自定义行展开。
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 340))
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 0),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: 0),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -4)
-        ])
-        alert.accessoryView = container
-
-        // dateTarget 必须存活到 modal 结束；NSSegmentedControl.target 是 weak。
-        objc_setAssociatedObject(alert, &Self.assocKey, dateTarget, .OBJC_ASSOCIATION_RETAIN)
-
-        ImportPathBreadcrumb.mark(
-            "photos_picker_run_modal",
-            [
-                "plan_id": initialPlan.id.uuidString,
-                "file": "AppKitPhotosImportPicker"
-            ]
-        )
-        let response = alert.runModal()
-        ImportPathBreadcrumb.mark(
-            "photos_picker_run_modal_ended",
-            [
-                "plan_id": initialPlan.id.uuidString,
-                "action": response == .alertFirstButtonReturn ? "continue" : "cancel"
-            ]
-        )
-        guard response == .alertFirstButtonReturn else {
+        if monthlyStats.isEmpty {
+            let empty = NSAlert()
+            empty.alertStyle = .informational
+            empty.messageText = "照片图库中没有找到照片"
+            empty.informativeText = "请确认「照片」App 中有照片，且 Luma 已获得完整图库读取权限。"
+            empty.addButton(withTitle: "好")
+            empty.runModal()
             return .cancelled
         }
 
-        // ── 解析结果 ──────────────────
-        let pickedDateTab = DatePresetTab(rawValue: dateSegmented.selectedSegment) ?? .last30
-        let pickedDatePreset: PhotosImportPlan.DatePreset
-        switch pickedDateTab {
-        case .last7: pickedDatePreset = .last7
-        case .last30: pickedDatePreset = .last30
-        case .last90: pickedDatePreset = .last90
-        case .allTime: pickedDatePreset = .allTime
-        case .custom: pickedDatePreset = .custom(start: startPicker.dateValue, end: endPicker.dateValue)
+        let state = PickerState(allStats: monthlyStats)
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "从照片 App 导入"
+        alert.informativeText = "勾选要导入的月份。只读本地缓存，不触发 iCloud 下载。"
+        alert.addButton(withTitle: "导入")
+        alert.addButton(withTitle: "取消")
+
+        let container = buildAccessoryView(state: state)
+        alert.accessoryView = container
+        state.showCurrentYear()
+
+        objc_setAssociatedObject(alert, &assocKey, state, .OBJC_ASSOCIATION_RETAIN)
+
+        ImportPathBreadcrumb.mark("photos_month_picker_modal", [
+            "month_count": String(monthlyStats.count),
+            "year_count": String(state.years.count)
+        ])
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else {
+            ImportPathBreadcrumb.mark("photos_month_picker_cancelled", [:])
+            return .cancelled
         }
 
-        let (pickedSmart, pickedUserAlbumID, pickedUserAlbumTitle) = Self.parseAlbum(from: albumPopup)
-        let pickedMedia = MediaTab(rawValue: mediaSegmented.selectedSegment)?.filter ?? .all
-        let pickedLimit = limitOptions[max(0, min(limitSegmented.selectedSegment, limitOptions.count - 1))]
-        let pickedDedupe = (dedupeCheckbox.state == .on)
+        let selectedMonths = state.selectedMonths()
+        if selectedMonths.isEmpty {
+            let noSel = NSAlert()
+            noSel.alertStyle = .informational
+            noSel.messageText = "未选择任何月份"
+            noSel.informativeText = "请至少勾选一个月份后再点导入。"
+            noSel.addButton(withTitle: "好")
+            noSel.runModal()
+            return .cancelled
+        }
+
+        let totalPhotos = state.selectedPhotoCount()
+        ImportPathBreadcrumb.mark("photos_month_picker_confirmed", [
+            "selected_months": String(selectedMonths.count),
+            "total_photos": String(totalPhotos)
+        ])
 
         let plan = PhotosImportPlan(
-            id: initialPlan.id,
-            datePreset: pickedDatePreset,
-            smartAlbum: pickedSmart,
-            userAlbumLocalIdentifier: pickedUserAlbumID,
-            userAlbumTitle: pickedUserAlbumTitle,
-            mediaTypeFilter: pickedMedia,
-            limit: pickedLimit,
-            dedupeAgainstCurrentProject: pickedDedupe
+            id: UUID(),
+            selectedMonths: selectedMonths,
+            mediaTypeFilter: .all,
+            dedupeAgainstCurrentProject: true
         )
         return .confirmed(plan)
     }
 
-    /// 估算结果二次确认。返回 true 表示用户点了"导入"，false 表示返回修改 / 取消。
-    static func presentEstimateConfirmation(estimate: PhotosImportPlanner.Estimate) -> Bool {
-        precondition(Thread.isMainThread, "AppKitPhotosImportPicker.presentEstimateConfirmation must be on main")
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-
-        let netCount = max(0, estimate.totalAssetCount - estimate.dedupedSkippedCount - estimate.cloudOnlyCount)
-
-        if estimate.totalAssetCount == 0 {
-            alert.messageText = "当前条件没有匹配到图片"
-            alert.informativeText = "请调整时间区间 / 相册 / 媒体类型 / 上限后重试。"
-            alert.addButton(withTitle: "返回修改")
-            ImportPathBreadcrumb.mark("photos_estimate_empty_confirm", ["total": "0"])
-            _ = alert.runModal()
-            return false
-        }
-
-        if netCount == 0 {
-            alert.messageText = "匹配到 \(estimate.totalAssetCount) 张，但全部会被跳过"
-            var why: [String] = []
-            if estimate.dedupedSkippedCount > 0 { why.append("\(estimate.dedupedSkippedCount) 张已存在本项目") }
-            if estimate.cloudOnlyCount > 0 { why.append("约 \(estimate.cloudOnlyCount) 张仅在 iCloud") }
-            alert.informativeText = why.joined(separator: "；") + "。请调整条件后重试。"
-            alert.addButton(withTitle: "返回修改")
-            ImportPathBreadcrumb.mark("photos_estimate_all_skipped_confirm", ["net": "0", "total": String(estimate.totalAssetCount)])
-            _ = alert.runModal()
-            return false
-        }
-
-        alert.messageText = "确认导入 \(netCount) 张？"
-        var lines: [String] = []
-        lines.append("匹配 \(estimate.totalAssetCount) 张")
-        if estimate.dedupedSkippedCount > 0 {
-            lines.append("· 跳过本项目已导入 \(estimate.dedupedSkippedCount) 张")
-        }
-        if estimate.cloudOnlyCount > 0 {
-            lines.append("· 跳过仅在 iCloud 约 \(estimate.cloudOnlyCount) 张")
-        }
-        lines.append("实际导入约 \(netCount) 张 · 估算占用 \(estimate.prettyByteSize)")
-        lines.append("（仅缩略 + 预览，原图导出时按需拉）")
-        alert.informativeText = lines.joined(separator: "\n")
-
-        alert.addButton(withTitle: "导入")
-        alert.addButton(withTitle: "返回修改")
-        ImportPathBreadcrumb.mark(
-            "photos_estimate_run_confirm_modal",
-            [
-                "net": String(netCount),
-                "total": String(estimate.totalAssetCount)
-            ]
-        )
-        let ok = alert.runModal() == .alertFirstButtonReturn
-        ImportPathBreadcrumb.mark("photos_estimate_confirm_ended", ["import": ok ? "1" : "0"])
-        return ok
-    }
-
-    // MARK: - 辅助
+    // MARK: - Private
 
     private static var assocKey: UInt8 = 0
 
-    private static func dateTab(for preset: PhotosImportPlan.DatePreset) -> DatePresetTab {
-        switch preset {
-        case .last7: return .last7
-        case .last30: return .last30
-        case .last90: return .last90
-        case .allTime: return .allTime
-        case .custom: return .custom
-        }
-    }
+    private static func buildAccessoryView(state: PickerState) -> NSView {
+        let width: CGFloat = 520
+        let rowHeight: CGFloat = 28
+        let maxRows = 12
+        let pageHeight = CGFloat(maxRows) * rowHeight
+        let navHeight: CGFloat = 32
+        let summaryHeight: CGFloat = 24
+        let totalHeight = navHeight + pageHeight + summaryHeight + 8
 
-    private static func initialCustomRange(from preset: PhotosImportPlan.DatePreset) -> (start: Date, end: Date) {
-        let now = Date.now
-        let calendar = Calendar.current
-        switch preset {
-        case .custom(let s, let e):
-            return (s, e)
-        default:
-            // 默认给一个"过去 30 天 → 今天"的初值；用户切到"自定义"时立即可见。
-            let start = calendar.date(byAdding: .day, value: -30, to: now) ?? now
-            return (start, now)
-        }
-    }
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: totalHeight))
 
-    private static func populateAlbumPopup(
-        _ popup: NSPopUpButton,
-        smart: [PhotosImportPlanner.SmartAlbumOption],
-        user: [PhotosImportPlanner.UserAlbumOption]
-    ) {
-        popup.removeAllItems()
+        // Year navigation bar
+        let prevBtn = NSButton(title: "◀", target: state, action: #selector(PickerState.prevYear(_:)))
+        prevBtn.bezelStyle = .inline
+        prevBtn.frame = NSRect(x: 8, y: totalHeight - navHeight, width: 44, height: 24)
+        container.addSubview(prevBtn)
+        state.prevButton = prevBtn
 
-        // (1) 全部图片
-        popup.addItem(withTitle: "全部图片")
-        popup.lastItem?.representedObject = AlbumChoice.all
+        let yearLabel = NSTextField(labelWithString: "")
+        yearLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        yearLabel.alignment = .center
+        yearLabel.frame = NSRect(x: 60, y: totalHeight - navHeight, width: width - 120, height: 24)
+        container.addSubview(yearLabel)
+        state.yearLabel = yearLabel
 
-        // (2) 智能相册分组
-        if !smart.isEmpty {
-            popup.menu?.addItem(NSMenuItem.separator())
-            let header = NSMenuItem(title: "智能相册", action: nil, keyEquivalent: "")
-            header.isEnabled = false
-            popup.menu?.addItem(header)
-            for option in smart {
-                let item = NSMenuItem(title: "  " + option.title, action: nil, keyEquivalent: "")
-                item.representedObject = AlbumChoice.smart(option.id.rawValue)
-                popup.menu?.addItem(item)
-            }
-        }
+        let nextBtn = NSButton(title: "▶", target: state, action: #selector(PickerState.nextYear(_:)))
+        nextBtn.bezelStyle = .inline
+        nextBtn.frame = NSRect(x: width - 52, y: totalHeight - navHeight, width: 44, height: 24)
+        container.addSubview(nextBtn)
+        state.nextButton = nextBtn
 
-        // (3) 用户自建相册分组
-        if !user.isEmpty {
-            popup.menu?.addItem(NSMenuItem.separator())
-            let header = NSMenuItem(title: "我的相册", action: nil, keyEquivalent: "")
-            header.isEnabled = false
-            popup.menu?.addItem(header)
-            for album in user {
-                let item = NSMenuItem(title: "  " + album.title, action: nil, keyEquivalent: "")
-                item.representedObject = AlbumChoice.user(id: album.id, title: album.title)
-                popup.menu?.addItem(item)
-            }
-        }
-    }
+        // Page area — one container per year, overlapping in the same position
+        let pageOriginY = summaryHeight + 8
+        let pageArea = FlippedPageView(frame: NSRect(x: 0, y: pageOriginY, width: width, height: pageHeight))
+        container.addSubview(pageArea)
 
-    private static func selectAlbum(in popup: NSPopUpButton, plan: PhotosImportPlan) {
-        if let userID = plan.userAlbumLocalIdentifier {
-            for item in popup.itemArray {
-                if case .user(let id, _) = item.representedObject as? AlbumChoice, id == userID {
-                    popup.select(item)
-                    return
+        let countColX: CGFloat = 150
+        let tagColX: CGFloat = 330
+
+        for year in state.years {
+            let yearView = FlippedPageView(frame: NSRect(x: 0, y: 0, width: width, height: pageHeight))
+            yearView.isHidden = true
+
+            let months = state.statsByYear[year]!.sorted { $0.slot.month > $1.slot.month }
+            for (row, stats) in months.enumerated() {
+                let y = CGFloat(row) * rowHeight
+
+                let cb = NSButton(checkboxWithTitle: stats.slot.label, target: state,
+                                  action: #selector(PickerState.checkboxChanged(_:)))
+                cb.font = .systemFont(ofSize: 13, weight: .medium)
+                cb.frame = NSRect(x: 8, y: y, width: countColX - 8, height: rowHeight)
+                yearView.addSubview(cb)
+                state.register(checkbox: cb, for: stats)
+
+                let countLabel = NSTextField(labelWithString: "\(stats.photoCount)张 · \(stats.prettyByteSize)")
+                countLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+                countLabel.textColor = .secondaryLabelColor
+                countLabel.frame = NSRect(x: countColX, y: y + 2, width: tagColX - countColX - 4, height: rowHeight)
+                yearView.addSubview(countLabel)
+
+                var tagText: String?
+                var tagColor: NSColor = .secondaryLabelColor
+                if stats.isLargeMonth && stats.hasPreviousImport {
+                    tagText = "⚠ 量大 · 已导入\(stats.previouslyImportedCount)张"
+                    tagColor = .systemOrange
+                } else if stats.isLargeMonth {
+                    tagText = "⚠ 数量较多"
+                    tagColor = .systemOrange
+                } else if stats.hasPreviousImport {
+                    tagText = "⚠ 已导入\(stats.previouslyImportedCount)张"
+                    tagColor = .systemBrown
+                }
+                if let tagText {
+                    let tag = NSTextField(labelWithString: tagText)
+                    tag.font = .systemFont(ofSize: 11)
+                    tag.textColor = tagColor
+                    tag.frame = NSRect(x: tagColX, y: y + 3, width: width - tagColX - 8, height: rowHeight)
+                    yearView.addSubview(tag)
                 }
             }
-        }
-        if let smart = plan.smartAlbum {
-            let raw = smart.rawValue
-            for item in popup.itemArray {
-                if case .smart(let s) = item.representedObject as? AlbumChoice, s == raw {
-                    popup.select(item)
-                    return
-                }
-            }
-        }
-        popup.selectItem(at: 0)
-    }
 
-    private static func parseAlbum(from popup: NSPopUpButton)
-        -> (smart: PhotosImportPlan.SmartAlbum?, userID: String?, userTitle: String?)
-    {
-        guard let choice = popup.selectedItem?.representedObject as? AlbumChoice else {
-            return (nil, nil, nil)
+            pageArea.addSubview(yearView)
+            state.yearViews[year] = yearView
         }
-        switch choice {
-        case .all:
-            return (nil, nil, nil)
-        case .smart(let raw):
-            return (PhotosImportPlan.SmartAlbum(rawValue: raw), nil, nil)
-        case .user(let id, let title):
-            return (nil, id, title)
-        }
-    }
 
-    private static func labeledRow(title: String, control: NSView, fullWidth: Bool) -> NSView {
-        let row = NSStackView()
-        row.orientation = .vertical
-        row.alignment = .leading
-        row.spacing = 4
-        row.translatesAutoresizingMaskIntoConstraints = false
+        // Summary label
+        let summaryLabel = NSTextField(labelWithString: "已选：0个月 · 0张")
+        summaryLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        summaryLabel.frame = NSRect(x: 8, y: 0, width: width - 16, height: summaryHeight)
+        container.addSubview(summaryLabel)
+        state.summaryLabel = summaryLabel
 
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        label.textColor = .secondaryLabelColor
-
-        row.addArrangedSubview(label)
-        row.addArrangedSubview(control)
-
-        if fullWidth {
-            control.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                control.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-                control.trailingAnchor.constraint(equalTo: row.trailingAnchor)
-            ])
-        }
-        return row
+        return container
     }
 }
 
-/// NSPopUpButton item 的 `representedObject`：表达"用户在相册下拉里选了什么"。
-private enum AlbumChoice {
-    case all
-    case smart(String)               // PhotosImportPlan.SmartAlbum.rawValue
-    case user(id: String, title: String)
-}
+/// 管理翻页状态和所有 checkbox 引用。故意不标 `@MainActor`。
+private final class PickerState: NSObject {
+    let years: [Int]
+    let statsByYear: [Int: [PhotosImportPlanner.MonthStats]]
+    private(set) var currentYearIndex: Int = 0
 
-/// NSSegmentedControl 是 weak target；Swift 没法直接挂 closure，需要包成 NSObject。
-///
-/// **故意不标 `@MainActor`**：AppKit 在 main thread 通过 ObjC 调 `segmentedChanged(_:)`；
-/// 给 ObjC 可见的类加 `@MainActor` 会让编译器在 `@objc` 方法 prologue 注入
-/// `swift_task_isCurrentExecutorWithFlagsImpl` PAC 校验，在 macOS 26 / arm64e 下会撞
-/// `swift_getObjectType(invalid_addr)` SIGSEGV（详见 `LumaApp.swift` 中的同样修复
-/// 与 `KNOWN_ISSUES.md`）。
-private final class SegmentedToggleTarget: NSObject {
-    let onChange: (Int) -> Void
-    init(onChange: @escaping (Int) -> Void) {
-        self.onChange = onChange
+    var yearLabel: NSTextField!
+    var prevButton: NSButton!
+    var nextButton: NSButton!
+    var summaryLabel: NSTextField!
+    var yearViews: [Int: NSView] = [:]
+
+    private var checkboxMap: [(checkbox: NSButton, stats: PhotosImportPlanner.MonthStats)] = []
+
+    init(allStats: [PhotosImportPlanner.MonthStats]) {
+        var byYear: [Int: [PhotosImportPlanner.MonthStats]] = [:]
+        for s in allStats { byYear[s.slot.year, default: []].append(s) }
+        self.statsByYear = byYear
+        self.years = byYear.keys.sorted(by: >)
     }
-    @objc func segmentedChanged(_ sender: NSSegmentedControl) {
-        let index = sender.selectedSegment
-        Task { @MainActor in
-            onChange(index)
+
+    func register(checkbox: NSButton, for stats: PhotosImportPlanner.MonthStats) {
+        checkboxMap.append((checkbox, stats))
+    }
+
+    func selectedMonths() -> [PhotosImportPlan.MonthSlot] {
+        checkboxMap.compactMap { $0.checkbox.state == .on ? $0.stats.slot : nil }
+    }
+
+    func selectedPhotoCount() -> Int {
+        checkboxMap.reduce(0) { $0 + ($1.checkbox.state == .on ? $1.stats.photoCount : 0) }
+    }
+
+    func showCurrentYear() {
+        guard !years.isEmpty else { return }
+        let year = years[currentYearIndex]
+        yearLabel.stringValue = "\(year)年"
+        prevButton.isEnabled = currentYearIndex < years.count - 1
+        nextButton.isEnabled = currentYearIndex > 0
+
+        for (y, view) in yearViews {
+            view.isHidden = (y != year)
         }
     }
+
+    @objc func prevYear(_ sender: Any) {
+        guard currentYearIndex < years.count - 1 else { return }
+        currentYearIndex += 1
+        showCurrentYear()
+    }
+
+    @objc func nextYear(_ sender: Any) {
+        guard currentYearIndex > 0 else { return }
+        currentYearIndex -= 1
+        showCurrentYear()
+    }
+
+    @objc func checkboxChanged(_ sender: NSButton) {
+        updateSummary()
+    }
+
+    private func updateSummary() {
+        var monthCount = 0
+        var photoCount = 0
+        var totalBytes: Int64 = 0
+        for (cb, stats) in checkboxMap where cb.state == .on {
+            monthCount += 1
+            photoCount += stats.photoCount
+            totalBytes += stats.estimatedBytes
+        }
+        let sizeStr = ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
+        summaryLabel.stringValue = "已选：\(monthCount)个月 · \(photoCount)张 · \(sizeStr)"
+    }
+}
+
+private final class FlippedPageView: NSView {
+    override var isFlipped: Bool { true }
 }

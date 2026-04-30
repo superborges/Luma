@@ -37,6 +37,7 @@ struct ExportPanelView: View {
                             Text("按场景").tag(FolderTemplate.byGroup)
                             Text("按评分").tag(FolderTemplate.byRating)
                         }
+                        fileNamingSection
                         Toggle("附带 XMP", isOn: $store.exportOptions.writeXmpSidecar)
                         Toggle("写入修图建议", isOn: $store.exportOptions.writeEditSuggestionsToXmp)
                         pathRow(
@@ -46,6 +47,7 @@ struct ExportPanelView: View {
                             store.chooseExportFolder()
                         }
                     case .lightroom:
+                        fileNamingSection
                         Toggle("写入 XMP", isOn: $store.exportOptions.writeXmpSidecar)
                         Toggle("写入修图建议", isOn: $store.exportOptions.writeEditSuggestionsToXmp)
                         pathRow(
@@ -117,6 +119,37 @@ struct ExportPanelView: View {
             }
         }
         .frame(minWidth: 560, minHeight: 420)
+    }
+
+    @ViewBuilder
+    private var fileNamingSection: some View {
+        Picker("文件命名", selection: $store.exportOptions.fileNamingRule) {
+            Text("保留原名").tag(FileNamingRule.original)
+            Text("日期前缀").tag(FileNamingRule.datePrefix)
+            Text("自定义模板").tag(FileNamingRule.custom)
+        }
+        if store.exportOptions.fileNamingRule == .custom {
+            TextField("模板", text: $store.exportOptions.customNamingTemplate)
+            Text("可用变量：{original} {date} {datetime} {group} {seq}")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        if store.exportOptions.fileNamingRule != .original {
+            Text("预览：\(namingPreview)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var namingPreview: String {
+        FileNamingResolver.resolvedFileName(
+            originalName: "IMG_1234.jpg",
+            captureDate: Date(),
+            groupName: "Morning Walk",
+            sequenceInGroup: 1,
+            rule: store.exportOptions.fileNamingRule,
+            template: store.exportOptions.customNamingTemplate
+        )
     }
 
     @ViewBuilder

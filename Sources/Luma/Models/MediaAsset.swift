@@ -176,7 +176,7 @@ enum AssetIssue: String, Codable, Hashable, CaseIterable, Identifiable {
         case .underexposed:
             return "欠曝"
         case .eyesClosed:
-            return "闭眼"
+            return "面部异常"
         case .unsupportedFormat:
             return "不支持"
         }

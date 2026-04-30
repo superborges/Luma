@@ -54,11 +54,12 @@ enum EXIFParser {
             let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
             let longEdge = max(w, h)
             if longEdge > 0, longEdge <= maxLongEdge {
-                let options: [CFString: Any] = [
-                    kCGImageSourceShouldCache: true,
-                    kCGImageSourceShouldCacheImmediately: true,
+                let thumbOpts: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: longEdge,
                 ]
-                if let full = CGImageSourceCreateImageAtIndex(source, 0, options as CFDictionary) {
+                if let full = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOpts as CFDictionary) {
                     return full
                 }
             }

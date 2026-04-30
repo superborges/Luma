@@ -57,7 +57,7 @@ struct LocalMLScorer: Sendable {
         if brightness < 0.18 {
             issues.append(.underexposed)
         }
-        if let faceQuality, faceQuality > 0, faceQuality < 0.32 {
+        if let faceQuality, faceQuality > 0, faceQuality < 0.15 {
             issues.append(.eyesClosed)
         }
 

@@ -1,87 +1,113 @@
-import Photos
 import XCTest
 @testable import Luma
 
 final class PhotosImportPlanTests: XCTestCase {
-    // MARK: - DatePreset.resolvedRange
+    // MARK: - MonthSlot
 
-    func testDatePresetLast7RangeEndsAtNow() {
+    func testMonthSlotLabel() {
+        let slot = PhotosImportPlan.MonthSlot(year: 2026, month: 4)
+        XCTAssertEqual(slot.label, "2026年4月")
+    }
+
+    func testMonthSlotDateRangeSpansFullMonth() {
+        let slot = PhotosImportPlan.MonthSlot(year: 2026, month: 3)
+        let range = slot.dateRange
         let cal = Calendar.current
-        var c = DateComponents()
-        c.year = 2026
-        c.month = 4
-        c.day = 15
-        c.hour = 12
-        guard let now = cal.date(from: c) else {
-            return XCTFail("fixture date")
-        }
-        guard let range = PhotosImportPlan.DatePreset.last7.resolvedRange(now: now) else {
-            return XCTFail("expected range")
-        }
-        XCTAssertEqual(range.upperBound, now)
-        let expectedStart = cal.date(byAdding: .day, value: -7, to: now)
-        XCTAssertEqual(range.lowerBound, expectedStart)
+        XCTAssertEqual(cal.component(.year, from: range.lowerBound), 2026)
+        XCTAssertEqual(cal.component(.month, from: range.lowerBound), 3)
+        XCTAssertEqual(cal.component(.day, from: range.lowerBound), 1)
+        XCTAssertEqual(cal.component(.month, from: range.upperBound), 3)
+        XCTAssertEqual(cal.component(.day, from: range.upperBound), 31)
     }
 
-    func testDatePresetAllTimeIsNil() {
-        XCTAssertNil(PhotosImportPlan.DatePreset.allTime.resolvedRange(now: .now))
+    func testMonthSlotComparable() {
+        let jan = PhotosImportPlan.MonthSlot(year: 2026, month: 1)
+        let mar = PhotosImportPlan.MonthSlot(year: 2026, month: 3)
+        let dec2025 = PhotosImportPlan.MonthSlot(year: 2025, month: 12)
+        XCTAssertTrue(jan < mar)
+        XCTAssertTrue(dec2025 < jan)
     }
 
-    func testDatePresetCustomSwapsReversedBounds() {
-        let a = Date(timeIntervalSince1970: 1_000)
-        let b = Date(timeIntervalSince1970: 2_000)
-        let range = PhotosImportPlan.DatePreset.custom(start: b, end: a).resolvedRange(now: .now)
-        XCTAssertEqual(range?.lowerBound, a)
-        XCTAssertEqual(range?.upperBound, b)
+    // MARK: - dateRanges / dateRange
+
+    func testDateRangesReturnsPerMonthRanges() {
+        let plan = PhotosImportPlan(
+            id: UUID(),
+            selectedMonths: [
+                .init(year: 2026, month: 3),
+                .init(year: 2026, month: 1),
+            ],
+            mediaTypeFilter: .all,
+            dedupeAgainstCurrentProject: true
+        )
+        let ranges = plan.dateRanges
+        XCTAssertEqual(ranges.count, 2)
+        let cal = Calendar.current
+        XCTAssertEqual(cal.component(.month, from: ranges[0].lowerBound), 1)
+        XCTAssertEqual(cal.component(.month, from: ranges[1].lowerBound), 3)
+    }
+
+    func testDateRangeIsUnion() {
+        let plan = PhotosImportPlan(
+            id: UUID(),
+            selectedMonths: [
+                .init(year: 2026, month: 3),
+                .init(year: 2026, month: 1),
+            ],
+            mediaTypeFilter: .all,
+            dedupeAgainstCurrentProject: true
+        )
+        let range = plan.dateRange!
+        let cal = Calendar.current
+        XCTAssertEqual(cal.component(.month, from: range.lowerBound), 1)
+        XCTAssertEqual(cal.component(.month, from: range.upperBound), 3)
+    }
+
+    func testDateRangeNilWhenEmpty() {
+        let plan = PhotosImportPlan.makeDefault()
+        XCTAssertNil(plan.dateRange)
     }
 
     // MARK: - makeDefault
 
-    func testMakeDefaultHasExpectedSemDefaults() {
+    func testMakeDefaultHasExpectedDefaults() {
         let p = PhotosImportPlan.makeDefault()
-        if case .last30 = p.datePreset {} else { XCTFail() }
-        XCTAssertNil(p.smartAlbum)
+        XCTAssertTrue(p.selectedMonths.isEmpty)
         XCTAssertEqual(p.mediaTypeFilter, .all)
-        XCTAssertEqual(p.limit, 500)
         XCTAssertTrue(p.dedupeAgainstCurrentProject)
     }
 
     // MARK: - displayName
 
-    func testDisplayNameIncludesBaseAndLimit() {
-        let p = PhotosImportPlan.makeDefault()
-        XCTAssertTrue(p.displayName.contains("Mac · 照片 App"))
-        XCTAssertTrue(p.displayName.contains("最近 30 天"))
-        XCTAssertTrue(p.displayName.contains("500"))
+    func testDisplayNameSingleMonth() {
+        let p = PhotosImportPlan(
+            id: UUID(),
+            selectedMonths: [.init(year: 2026, month: 4)],
+            mediaTypeFilter: .all,
+            dedupeAgainstCurrentProject: true
+        )
+        XCTAssertTrue(p.displayName.contains("Mac · 照片"))
+        XCTAssertTrue(p.displayName.contains("2026年4月"))
     }
 
-    func testDisplayNameWithSmartAlbumUsesPlannerTitle() {
-        var p = PhotosImportPlan.makeDefault()
-        p.smartAlbum = .favorites
-        XCTAssertTrue(p.displayName.contains("收藏"), "应来自 PhotosImportPlanner.smartAlbums 标题")
-    }
-
-    func testDisplayNameWithUserAlbumWhenNoSmartAlbum() {
-        var p = PhotosImportPlan.makeDefault()
-        p.userAlbumTitle = "旅行"
-        XCTAssertTrue(p.displayName.contains("旅行"))
+    func testDisplayNameMultipleMonths() {
+        let p = PhotosImportPlan(
+            id: UUID(),
+            selectedMonths: [.init(year: 2026, month: 1), .init(year: 2026, month: 3)],
+            mediaTypeFilter: .all,
+            dedupeAgainstCurrentProject: true
+        )
+        XCTAssertTrue(p.displayName.contains("2个月"))
     }
 
     func testDisplayNameAppendsNonAllMediaFilter() {
-        var p = PhotosImportPlan.makeDefault()
-        p.mediaTypeFilter = .staticOnly
+        let p = PhotosImportPlan(
+            id: UUID(),
+            selectedMonths: [.init(year: 2026, month: 4)],
+            mediaTypeFilter: .staticOnly,
+            dedupeAgainstCurrentProject: true
+        )
         XCTAssertTrue(p.displayName.contains("仅静态"))
-    }
-
-    // MARK: - photoKitSubtype bridge
-
-    func testPhotoKitSubtypeMapsAllSmartAlbums() {
-        XCTAssertEqual(photoKitSubtype(for: .recentlyAdded), .smartAlbumRecentlyAdded)
-        XCTAssertEqual(photoKitSubtype(for: .favorites), .smartAlbumFavorites)
-        XCTAssertEqual(photoKitSubtype(for: .screenshots), .smartAlbumScreenshots)
-        XCTAssertEqual(photoKitSubtype(for: .selfPortraits), .smartAlbumSelfPortraits)
-        XCTAssertEqual(photoKitSubtype(for: .livePhotos), .smartAlbumLivePhotos)
-        XCTAssertEqual(photoKitSubtype(for: .bursts), .smartAlbumBursts)
     }
 
     // MARK: - PhotosImportPlanner.Estimate

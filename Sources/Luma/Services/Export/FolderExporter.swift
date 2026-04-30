@@ -24,9 +24,9 @@ struct FolderExporter: ExportDestinationAdapter {
         var exportedCount = 0
         var skippedCount = 0
         var failures: [ExportFailure] = []
+        var groupSequenceCounters: [UUID: Int] = [:]
 
         for asset in pickedAssets {
-            // 仅按 ID 过滤"仅重试失败项"；nil 表示导全部 picked。
             if let only = options.onlyAssetIDs, !only.contains(asset.id) {
                 skippedCount += 1
                 continue
@@ -50,10 +50,20 @@ struct FolderExporter: ExportDestinationAdapter {
                 )
                 try FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
 
-                let destinationURL = destinationFolder.appendingPathComponent(sourceURL.lastPathComponent)
-                if FileManager.default.fileExists(atPath: destinationURL.path) {
-                    try FileManager.default.removeItem(at: destinationURL)
-                }
+                let groupID = group?.id ?? UUID()
+                let seq = (groupSequenceCounters[groupID] ?? 0) + 1
+                groupSequenceCounters[groupID] = seq
+
+                let resolvedName = FileNamingResolver.resolvedFileName(
+                    originalName: sourceURL.lastPathComponent,
+                    captureDate: asset.metadata.captureDate,
+                    groupName: group?.name ?? "Ungrouped",
+                    sequenceInGroup: seq,
+                    rule: options.fileNamingRule,
+                    template: options.customNamingTemplate
+                )
+                let candidateURL = destinationFolder.appendingPathComponent(resolvedName)
+                let destinationURL = FileNamingResolver.uniqueURL(for: candidateURL, in: destinationFolder)
                 try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
 
                 if options.writeXmpSidecar {
