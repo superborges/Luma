@@ -110,6 +110,42 @@ final class PhotosImportPlanTests: XCTestCase {
         XCTAssertTrue(p.displayName.contains("仅静态"))
     }
 
+    // MARK: - PhotosImportPlanner.MonthStats
+
+    func testMonthStatsLargeMonthThreshold() {
+        let small = PhotosImportPlanner.MonthStats(
+            slot: .init(year: 2026, month: 1),
+            photoCount: 499,
+            estimatedBytes: 0,
+            previouslyImportedCount: 0
+        )
+        let large = PhotosImportPlanner.MonthStats(
+            slot: .init(year: 2026, month: 2),
+            photoCount: 500,
+            estimatedBytes: 0,
+            previouslyImportedCount: 0
+        )
+        XCTAssertFalse(small.isLargeMonth)
+        XCTAssertTrue(large.isLargeMonth)
+    }
+
+    func testMonthStatsPreviousImportFlag() {
+        let none = PhotosImportPlanner.MonthStats(
+            slot: .init(year: 2026, month: 1),
+            photoCount: 1,
+            estimatedBytes: 0,
+            previouslyImportedCount: 0
+        )
+        let some = PhotosImportPlanner.MonthStats(
+            slot: .init(year: 2026, month: 2),
+            photoCount: 1,
+            estimatedBytes: 0,
+            previouslyImportedCount: 1
+        )
+        XCTAssertFalse(none.hasPreviousImport)
+        XCTAssertTrue(some.hasPreviousImport)
+    }
+
     // MARK: - PhotosImportPlanner.Estimate
 
     func testEstimatePrettyByteSizeFormats() {
