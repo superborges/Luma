@@ -3,6 +3,14 @@ import XCTest
 
 @MainActor
 final class ThumbnailCacheTests: XCTestCase {
+
+    /// 版本化后缀：与 ThumbnailCache.diskCacheVersion 保持一致。
+    private func versionedPath(_ thumbnailURL: URL) -> String {
+        let base = thumbnailURL.deletingPathExtension().lastPathComponent
+        return thumbnailURL.deletingLastPathComponent()
+            .appendingPathComponent("\(base)@4.png").path
+    }
+
     func testImageGeneratesThumbnailWhenDiskCacheIsMissing() async throws {
         try await TestFixtures.withTemporaryDirectory(prefix: "ThumbnailCache") { root in
             let cache = ThumbnailCache(countLimit: 8)
@@ -24,7 +32,7 @@ final class ThumbnailCacheTests: XCTestCase {
             let image = await cache.image(for: asset)
 
             XCTAssertNotNil(image)
-            XCTAssertTrue(FileManager.default.fileExists(atPath: thumbnailURL.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: versionedPath(thumbnailURL)))
 
             let snapshot = cache.snapshot()
             XCTAssertEqual(snapshot.generatedImages, 1)
@@ -52,7 +60,7 @@ final class ThumbnailCacheTests: XCTestCase {
 
             let generatedImage = await cache.image(for: asset)
             XCTAssertNotNil(generatedImage)
-            XCTAssertTrue(FileManager.default.fileExists(atPath: thumbnailURL.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: versionedPath(thumbnailURL)))
 
             cache.invalidateAll()
             cache.resetDiagnostics()

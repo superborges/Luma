@@ -6,7 +6,7 @@ final class DisplayImageCache {
     static let shared = DisplayImageCache()
 
     /// 解码策略或 key 格式变更时递增，避免内存里长期命中旧缓存导致中央大图发糊。
-    private static let cacheKeySchema = "display:v4"
+    private static let cacheKeySchema = "display:v6"
 
     private let memoryCache = NSCache<NSString, NSImage>()
     private var cachedKeys: Set<String> = []

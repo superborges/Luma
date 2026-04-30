@@ -144,14 +144,15 @@ struct PhotosLibraryAdapter: ImportSourceAdapter {
     }
 
     private func requestThumbnail(for asset: PHAsset) async -> CGImage? {
-        await withCheckedContinuation { continuation in
+        let size = CGFloat(ThumbnailCache.thumbnailMaxPixelSize)
+        return await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
-            options.deliveryMode = .fastFormat
+            options.deliveryMode = .highQualityFormat
             options.isNetworkAccessAllowed = false
             options.resizeMode = .fast
             PHImageManager.default().requestImage(
                 for: asset,
-                targetSize: CGSize(width: 400, height: 400),
+                targetSize: CGSize(width: size, height: size),
                 contentMode: .aspectFill,
                 options: options
             ) { image, _ in

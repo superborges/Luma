@@ -48,7 +48,7 @@ struct SDCardAdapter: ImportSourceAdapter {
         guard let url = item.previewFile ?? item.rawFile else {
             return nil
         }
-        return EXIFParser.makeThumbnail(from: url, maxPixelSize: 400)
+        return EXIFParser.makeThumbnail(from: url, maxPixelSize: ThumbnailCache.thumbnailMaxPixelSize)
     }
 
     func copyPreview(_ item: DiscoveredItem, to: URL) async throws {

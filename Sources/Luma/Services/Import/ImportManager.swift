@@ -515,6 +515,9 @@ struct ImportManager: Sendable {
 
             if let thumbnail = await adapter.fetchThumbnail(item) {
                 try? Self.writeThumbnail(thumbnail, to: thumbnailURL)
+            } else if case .photosLibrary = item.source {
+                RuntimeTrace.event("asset_skipped_no_local_data", category: "import", metadata: ["base_name": item.baseName])
+                continue
             }
             try await connectionTracker.ensureConnected()
 

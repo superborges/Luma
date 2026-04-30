@@ -18,6 +18,10 @@ final class ThumbnailCache {
     private var preheatedItems = 0
     private var trimEvictions = 0
 
+    /// Retina 2x 显示下右栏 3 列网格每格约 110pt = 220px；
+    /// 600px 确保即使 3x 缩放或大尺寸屏幕也能保持清晰。
+    nonisolated static let thumbnailMaxPixelSize = 600
+
     init(countLimit: Int = 800) {
         memoryCache.countLimit = countLimit
     }
@@ -143,25 +147,30 @@ final class ThumbnailCache {
             return cached
         }
 
-        guard let sourceURL = asset.previewURL ?? asset.rawURL,
-              let thumbnailURL = asset.thumbnailURL else {
+        guard let thumbnailURL = asset.thumbnailURL else {
             return nil
         }
 
-        guard let payload = await Self.loadThumbnailPayload(
-            from: sourceURL,
-            thumbnailURL: thumbnailURL,
-            maxPixelSize: 400
-        ) else {
+        // 依次尝试 preview → raw 作为生成源（与 DisplayImageCache 策略一致）
+        let candidates = [asset.previewURL, asset.rawURL].compactMap { $0 }
+        var payload: ThumbnailPayload?
+        for source in candidates where payload == nil {
+            payload = await Self.loadThumbnailPayload(
+                from: source,
+                thumbnailURL: thumbnailURL,
+                maxPixelSize: Self.thumbnailMaxPixelSize
+            )
+        }
+
+        guard let payload else {
             return nil
         }
 
         guard !Task.isCancelled else { return nil }
 
-        let image = NSImage(
-            cgImage: payload.cgImage,
-            size: NSSize(width: payload.cgImage.width, height: payload.cgImage.height)
-        )
+        let rep = NSBitmapImageRep(cgImage: payload.cgImage)
+        let image = NSImage(size: rep.size)
+        image.addRepresentation(rep)
 
         memoryCache.setObject(image, forKey: key as NSString)
         cachedKeys.insert(key)
@@ -174,6 +183,16 @@ final class ThumbnailCache {
         return image
     }
 
+    /// 磁盘缓存版本。旧版本（无后缀）的 PNG 可能因 ImageIO orientation bug 导致方向错误，
+    /// 加版本后缀让旧文件自动失效、触发重新生成。
+    private nonisolated static let diskCacheVersion = 4
+
+    private nonisolated static func versionedURL(_ thumbnailURL: URL) -> URL {
+        let base = thumbnailURL.deletingPathExtension().lastPathComponent
+        return thumbnailURL.deletingLastPathComponent()
+            .appendingPathComponent("\(base)@\(diskCacheVersion).png")
+    }
+
     private nonisolated static func loadThumbnailPayload(
         from sourceURL: URL,
         thumbnailURL: URL,
@@ -181,21 +200,31 @@ final class ThumbnailCache {
     ) async -> ThumbnailPayload? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
+                let vURL = versionedURL(thumbnailURL)
+
+                // 1. 优先读取版本化磁盘缓存
+                if let image = decodeImage(at: vURL) {
+                    continuation.resume(returning: ThumbnailPayload(cgImage: image, origin: .disk))
+                    return
+                }
+
+                // 2. 从 source 文件重新生成
+                if let image = generateThumbnail(
+                    from: sourceURL,
+                    to: vURL,
+                    maxPixelSize: maxPixelSize
+                ) {
+                    continuation.resume(returning: ThumbnailPayload(cgImage: image, origin: .generated))
+                    return
+                }
+
+                // 3. Fallback: 读取导入时生成的原始缩略图（可能方向不对但至少有内容）
                 if let image = decodeImage(at: thumbnailURL) {
                     continuation.resume(returning: ThumbnailPayload(cgImage: image, origin: .disk))
                     return
                 }
 
-                guard let image = generateThumbnail(
-                    from: sourceURL,
-                    to: thumbnailURL,
-                    maxPixelSize: maxPixelSize
-                ) else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-
-                continuation.resume(returning: ThumbnailPayload(cgImage: image, origin: .generated))
+                continuation.resume(returning: nil)
             }
         }
     }

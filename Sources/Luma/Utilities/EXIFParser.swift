@@ -30,7 +30,24 @@ enum EXIFParser {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
             return nil
         }
+        return decodeThumbnail(source: source, maxPixelSize: maxPixelSize)
+    }
 
+    /// 中央大图用：从文件解码到 `maxLongEdge` 尺寸内，保证方向正确。
+    static func cgImageForDisplay(at url: URL, maxLongEdge: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            return nil
+        }
+        return decodeThumbnail(source: source, maxPixelSize: maxLongEdge)
+    }
+
+    /// 统一解码入口。
+    ///
+    /// 策略：**保留 `kCGImageSourceCreateThumbnailWithTransform: true`**，让 ImageIO 处理
+    /// 方向（对绝大多数图片正确）。然后仅对 orientation 5-8（会交换宽高的旋转）做
+    /// **尺寸验证**：如果输出的横竖方向与预期不符，说明 ImageIO 未应用变换，此时手动补救。
+    /// orientation 2-4（不交换宽高的翻转/180°）无法通过尺寸检测，信任 ImageIO。
+    private static func decodeThumbnail(source: CGImageSource, maxPixelSize: Int) -> CGImage? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
@@ -38,34 +55,84 @@ enum EXIFParser {
             kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
         ]
 
-        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-    }
-
-    /// 中央大图用：若整图长边不超过 `maxLongEdge`，直接 `CreateImageAtIndex` 解码主图，
-    /// 避免 `CreateThumbnailAtIndex` 在 HEIC/JPEG 上命中**内嵌小缩略图**导致永远发糊。
-    /// 若超过预算则退回 `makeThumbnail` 做降采样。
-    static func cgImageForDisplay(at url: URL, maxLongEdge: Int) -> CGImage? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
             return nil
         }
 
-        if let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
-            let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
-            let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
-            let longEdge = max(w, h)
-            if longEdge > 0, longEdge <= maxLongEdge {
-                let thumbOpts: [CFString: Any] = [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: longEdge,
-                ]
-                if let full = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOpts as CFDictionary) {
-                    return full
-                }
-            }
+        let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let orientation = (props?[kCGImagePropertyOrientation] as? UInt32) ?? 1
+
+        guard orientation >= 5, orientation <= 8 else {
+            return image
         }
 
-        return makeThumbnail(from: url, maxPixelSize: maxLongEdge)
+        let srcW = (props?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+        let srcH = (props?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+        guard srcW > 0, srcH > 0, srcW != srcH else {
+            return image
+        }
+
+        let srcIsLandscape = srcW > srcH
+        let resultIsLandscape = image.width > image.height
+
+        if srcIsLandscape == resultIsLandscape {
+            return applyOrientation(image, orientation: orientation) ?? image
+        }
+
+        return image
+    }
+
+    /// 手动应用 EXIF orientation 变换（仅用于 ImageIO 未正确处理的补救场景）。
+    private static func applyOrientation(_ image: CGImage, orientation: UInt32) -> CGImage? {
+        let w = image.width
+        let h = image.height
+
+        let swapsWidthHeight = orientation >= 5 && orientation <= 8
+        let drawWidth = swapsWidthHeight ? h : w
+        let drawHeight = swapsWidthHeight ? w : h
+
+        guard let ctx = CGContext(
+            data: nil,
+            width: drawWidth,
+            height: drawHeight,
+            bitsPerComponent: image.bitsPerComponent,
+            bytesPerRow: 0,
+            space: image.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: image.bitmapInfo.rawValue
+        ) else { return nil }
+
+        ctx.interpolationQuality = .high
+
+        switch orientation {
+        case 2: // Mirror horizontal
+            ctx.translateBy(x: CGFloat(drawWidth), y: 0)
+            ctx.scaleBy(x: -1, y: 1)
+        case 3: // Rotate 180°
+            ctx.translateBy(x: CGFloat(drawWidth), y: CGFloat(drawHeight))
+            ctx.rotate(by: CGFloat.pi)
+        case 4: // Mirror vertical
+            ctx.translateBy(x: 0, y: CGFloat(drawHeight))
+            ctx.scaleBy(x: 1, y: -1)
+        case 5: // Mirror horizontal + rotate 270° CW
+            ctx.translateBy(x: CGFloat(drawWidth), y: 0)
+            ctx.rotate(by: CGFloat.pi / 2)
+            ctx.scaleBy(x: 1, y: -1)
+        case 6: // Rotate 90° CW
+            ctx.translateBy(x: CGFloat(drawWidth), y: 0)
+            ctx.rotate(by: CGFloat.pi / 2)
+        case 7: // Mirror horizontal + rotate 90° CW
+            ctx.translateBy(x: 0, y: CGFloat(drawHeight))
+            ctx.rotate(by: -CGFloat.pi / 2)
+            ctx.scaleBy(x: 1, y: -1)
+        case 8: // Rotate 270° CW
+            ctx.translateBy(x: 0, y: CGFloat(drawHeight))
+            ctx.rotate(by: -CGFloat.pi / 2)
+        default:
+            return nil
+        }
+
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return ctx.makeImage()
     }
 
     private static func fallbackMetadata(for url: URL) -> EXIFData {
