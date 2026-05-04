@@ -13,11 +13,13 @@ struct SettingsView: View {
                 .tabItem { Label("通用", systemImage: "gearshape") }
             exportDefaultsTab
                 .tabItem { Label("导出默认值", systemImage: "square.and.arrow.up") }
+            AIModelsSettingsView(store: store)
+                .tabItem { Label("AI 模型", systemImage: "sparkles") }
             developerTab
                 .tabItem { Label("开发", systemImage: "wrench.and.screwdriver") }
         }
         .padding()
-        .frame(width: 620, height: 460)
+        .frame(width: 720, height: 560)
     }
 
     private var generalTab: some View {

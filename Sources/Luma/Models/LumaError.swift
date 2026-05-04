@@ -8,6 +8,8 @@ enum LumaError: LocalizedError {
     case persistenceFailed(String)
     case configurationInvalid(String)
     case networkFailed(String)
+    case aiProvider(code: Int, message: String)
+    case keychainUnavailable(String)
 
     var errorDescription: String? {
         switch self {
@@ -25,6 +27,10 @@ enum LumaError: LocalizedError {
             return message
         case .networkFailed(let message):
             return message
+        case .aiProvider(let code, let message):
+            return "AI 服务返回错误（\(code)）：\(message)"
+        case .keychainUnavailable(let message):
+            return "Keychain 不可用：\(message)"
         }
     }
 }

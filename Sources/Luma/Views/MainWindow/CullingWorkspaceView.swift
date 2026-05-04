@@ -19,9 +19,21 @@ struct CullingWorkspaceView: View {
     /// 切换分组 / 切换非 burst cell 时自动复位。
     @State private var burstFocusOverride: Bool = false
 
+    /// V2: 控制 AI 评分确认弹窗显示。
+    @State private var showScoringConfirm: Bool = false
+
+    /// 顶部"开始 AI 评分"按钮可用条件：当前 session 存在，且评分不在进行中。
+    /// 是否真有可用模型由 ScoringConfirmSheet 内部进一步检查。
+    var canStartScoring: Bool {
+        guard let session = store.currentSession else { return false }
+        guard !session.groups.isEmpty else { return false }
+        return store.cloudScoringStatus != .running
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             cullingHeader
+            ScoringProgressBar(store: store)
             HStack(spacing: 0) {
                 smartGroupsSidebar
                     .frame(width: 264)
@@ -32,6 +44,12 @@ struct CullingWorkspaceView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             bottomActionBar
+        }
+        .sheet(isPresented: $showScoringConfirm) {
+            ScoringConfirmSheet(store: store, isPresented: $showScoringConfirm)
+        }
+        .sheet(isPresented: $store.budgetExceededAlertVisible) {
+            BudgetExceededSheet(store: store, isPresented: $store.budgetExceededAlertVisible)
         }
         .background(StitchTheme.surface)
         .onChange(of: store.selectedGroupID) { _, _ in
@@ -135,6 +153,24 @@ struct CullingWorkspaceView: View {
             .menuIndicator(.hidden)
             .disabled(store.isImporting)
             .lumaTrack("culling.header.import_menu", kind: "menu")
+
+            Button {
+                showScoringConfirm = true
+            } label: {
+                Label("AI 评分", systemImage: "sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(white: 0.85))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(!canStartScoring)
+            .help(canStartScoring ? "对所有分组发起 AI 评分" : "评分进行中或未配置 AI 模型")
+            .lumaTrack("culling.header.scoring", kind: "button")
 
             Button {
                 store.openExportPanel()
@@ -465,10 +501,12 @@ struct CullingWorkspaceView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     exifCard
-                    if store.selectedAsset != nil {
+                    if let asset = store.selectedAsset {
                         Divider().background(Color.white.opacity(0.05))
-                        AIScoreCardView(aiScore: store.selectedAsset?.aiScore)
-                        IssueTagsView(issues: store.selectedAsset?.issues ?? [])
+                        AIScoreCardView(aiScore: asset.aiScore)
+                        IssueTagsView(issues: asset.issues)
+                        Divider().background(Color.white.opacity(0.05))
+                        AIEnhancementSection(store: store, asset: asset)
                     }
                 }
             }

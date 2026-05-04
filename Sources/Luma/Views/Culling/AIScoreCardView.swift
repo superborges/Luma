@@ -14,6 +14,9 @@ struct AIScoreCardView: View {
                     .foregroundStyle(StitchTheme.onSurface)
                     .textCase(.uppercase)
                     .tracking(0.8)
+                if let badge = sourceBadge(aiScore) {
+                    badge
+                }
             }
 
             if let score = aiScore {
@@ -91,5 +94,24 @@ struct AIScoreCardView: View {
         case 40..<70: return .yellow
         default: return .red
         }
+    }
+
+    /// 评分来源角标。约定：云端模型 provider 字符串以 `cloud:` 开头；其余视为本地。
+    private func sourceBadge(_ score: AIScore?) -> AnyView? {
+        guard let score else { return nil }
+        let isCloud = score.provider.hasPrefix("cloud:")
+        let label = isCloud ? "云端" : "本地"
+        let color: Color = isCloud ? StitchTheme.primary : Color(white: 0.45)
+        let view = HStack(spacing: 3) {
+            Image(systemName: isCloud ? "cloud.fill" : "cpu")
+                .font(.system(size: 8, weight: .bold))
+            Text(label)
+                .font(StitchTypography.font(size: 8, weight: .bold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.85), in: Capsule())
+        return AnyView(view)
     }
 }

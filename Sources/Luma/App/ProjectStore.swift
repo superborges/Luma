@@ -110,6 +110,53 @@ final class ProjectStore {
     private let groupingTimeThresholdKey = "Luma.groupingTimeThreshold"
     private let thumbnailCacheLimitKey = "Luma.thumbnailCacheLimit"
     private let defaultFileNamingRuleKey = "Luma.defaultFileNamingRule"
+    /// V2: 用户偏好的评分策略 + 预算阈值。Brief C 的 UI 直接 binding 到 `scoringStrategy` / `scoringBudgetThreshold`。
+    static let scoringStrategyDefaultsKey = "Luma.scoringStrategy"
+    static let scoringBudgetThresholdDefaultsKey = "Luma.scoringBudgetThresholdUSD"
+
+    // MARK: - V2 cloud scoring runtime state
+
+    /// 全应用共享的 ModelConfigStore（UserDefaults + Keychain）。
+    /// 设置页、Coordinator、修图建议路径全部走同一实例，避免 Keychain service 名不一致。
+    /// `var` 仅为测试可注入；生产路径**不应**修改。
+    @ObservationIgnored
+    var modelConfigStore: ModelConfigStore = KeychainModelConfigStore()
+
+    /// 懒加载的协调器，与 ProjectStore 同生命周期。由扩展中的 `ensureCloudScoringCoordinator` 创建。
+    var cloudScoringCoordinator: CloudScoringCoordinator?
+    var cloudScoringStatus: ScoringStatus = .idle
+    var cloudScoringProgress: ScoringProgressEvent?
+    var currentBudgetSnapshot: BudgetSnapshot?
+    var cloudScoringErrorMessage: String?
+
+    // MARK: - V2 single-photo edit suggestion state
+
+    /// 单张修图建议请求状态：`assetID -> EditSuggestionsRequestStatus`。
+    /// UI 监听本字典决定按钮 spinner / 错误回执 / 卡片显示。
+    var editSuggestionsRequestStatus: [UUID: EditSuggestionsRequestStatus] = [:]
+    /// 用户偏好的评分策略。改值时自动同步到 UserDefaults；同时让 `@Observable` 触发 UI 刷新。
+    var scoringStrategy: ScoringStrategy = {
+        let raw = UserDefaults.standard.string(forKey: ProjectStore.scoringStrategyDefaultsKey) ?? ScoringStrategy.balanced.rawValue
+        return ScoringStrategy(rawValue: raw) ?? .balanced
+    }() {
+        didSet {
+            guard scoringStrategy != oldValue else { return }
+            UserDefaults.standard.set(scoringStrategy.rawValue, forKey: ProjectStore.scoringStrategyDefaultsKey)
+        }
+    }
+    /// 单批次预算阈值。同上，setter 自动持久化。
+    var scoringBudgetThreshold: Double = {
+        let saved = UserDefaults.standard.double(forKey: ProjectStore.scoringBudgetThresholdDefaultsKey)
+        return saved > 0 ? saved : 5.0
+    }() {
+        didSet {
+            guard scoringBudgetThreshold != oldValue, scoringBudgetThreshold > 0 else { return }
+            UserDefaults.standard.set(scoringBudgetThreshold, forKey: ProjectStore.scoringBudgetThresholdDefaultsKey)
+        }
+    }
+    /// 阈值预警弹窗触发标记。UI 订阅；用户处理后置 false。
+    var budgetExceededAlertVisible: Bool = false
+    var scoringProgressTask: Task<Void, Never>?
     // useSimplifiedPhotosPickerKey removed in v2 month-based picker refactor
     // 历史字段：var photosImportPickerPlan: PhotosImportPlan?
     // 已移除——picker 现在用 AppKit NSAlert 实现，不再走 SwiftUI sheet。
@@ -1828,6 +1875,13 @@ final class ProjectStore {
     private func invalidateDerivedState() {
         derivedStateIsDirty = true
         invalidateSelectionDerivedState()
+    }
+
+    /// Internal 版本：供 extension（如 V2 云端评分 / 修图建议）在直接修改深层路径
+    /// （`sessions[i].assets[j].aiScore = ...`）后主动失效 derived state 缓存。
+    /// 直接 setter 路径已经走 `invalidateDerivedState()`；本方法只是把 private 桥接出来。
+    func invalidateAllCachesAfterDirectMutation() {
+        invalidateDerivedState()
     }
 
     private func invalidateSelectionDerivedState() {

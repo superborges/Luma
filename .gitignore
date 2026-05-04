@@ -11,3 +11,5 @@ DerivedData/
 Artifacts/
 # 本机 V1 合约素材路径（不提交；用 v1-contract.local.example.sh 为模板）
 scripts/v1-contract.local.sh
+# V2 合约 API Key（含 secret，绝不提交；用 v2-contract.local.example.sh 为模板）
+scripts/v2-contract.local.sh
