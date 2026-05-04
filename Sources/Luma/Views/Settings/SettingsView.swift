@@ -1,4 +1,26 @@
+import AppKit
 import SwiftUI
+
+/// 设置窗口"浮在最前"配置器。
+///
+/// 设计取舍：
+/// - 通过 NSViewRepresentable 拿到 NSWindow，设 level = `.floating`
+/// - `.floating` 仅相对本进程其他窗口浮起；切到其他 App 不会盖住其他 App 的窗口
+/// - hidesOnDeactivate = true 让用户切走再切回时窗口自然回到 stack 顶部
+private struct SettingsWindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            window.level = .floating
+            window.collectionBehavior.insert(.fullScreenAuxiliary)
+            window.hidesOnDeactivate = true
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
 
 struct SettingsView: View {
     @Bindable var store: ProjectStore
@@ -20,6 +42,10 @@ struct SettingsView: View {
         }
         .padding()
         .frame(width: 720, height: 560)
+        // macOS 默认 Settings 窗口是普通 window level，会被主窗口遮挡。
+        // 拿到 NSWindow 后把 level 提到 floating——使其始终浮在 Luma 自己的其他窗口之上，
+        // 但用户切到其他 App（如浏览器复制 API Key）时不会挡到那些 App（floating 仅相对本进程）。
+        .background(SettingsWindowConfigurator())
     }
 
     private var generalTab: some View {

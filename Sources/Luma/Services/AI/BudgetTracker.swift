@@ -65,13 +65,17 @@ actor BudgetTracker {
         thresholdCrossed = false
     }
 
-    /// 用 saved snapshot 恢复（断点续传场景）。
+    /// 用 saved snapshot 恢复累计花费（断点续传场景）。
+    ///
+    /// 注意：**不**恢复 `thresholdUSD`，保留构造时传入的新阈值。
+    /// `handleBudgetExceeded` 里保存的 snapshot 携带的是旧阈值，
+    /// 如果恢复过来会把用户在"调整阈值并继续"时设置的新阈值覆盖掉。
     func restore(from snapshot: BudgetSnapshot) {
         inputTokens = max(0, snapshot.inputTokens)
         outputTokens = max(0, snapshot.outputTokens)
         usd = max(0, snapshot.usd)
-        thresholdUSD = max(0, snapshot.thresholdUSD)
-        thresholdCrossed = currentSnapshot().exceededThreshold
+        // thresholdUSD 保持 init 传入的值，不从磁盘覆盖
+        thresholdCrossed = usd >= thresholdUSD
     }
 
     private func currentSnapshot() -> BudgetSnapshot {

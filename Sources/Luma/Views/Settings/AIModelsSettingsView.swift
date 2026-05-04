@@ -41,8 +41,11 @@ struct AIModelsSettingsView: View {
                 persistAllConfigs()
                 flushAPIKeyDraftIfNeeded(for: oldValue)
             }
-            apiKeyDraft = ""
+            // 必须先把 apiKeyEdited 置 false，再清空 apiKeyDraft——
+            // 否则后者会触发 SecureField 的 onChange 把 apiKeyEdited 翻回 true，
+            // 导致下次 flush 误判为"用户清空了 key"（已经吃过这个亏）。
             apiKeyEdited = false
+            apiKeyDraft = ""
         }
         .onDisappear {
             // 关闭设置 Tab 时 flush 当前模型的 API Key（如有未提交的草稿）。
@@ -128,6 +131,10 @@ struct AIModelsSettingsView: View {
                 onDelete: { deleteModel(at: index) },
                 onTest: { Task { await testConnection(at: index) } }
             )
+            // 关键：用模型 id 作为 view identity，强制切换模型时销毁并重建 ModelDetailEditor。
+            // 否则 ModelDetailEditor 内部的 .onChange(of: config.apiProtocol) 会被
+            // "binding 切到另一个 array element" 错误触发，把新模型的字段清空。
+            .id(id)
         } else {
             VStack(alignment: .leading, spacing: 6) {
                 Text("从左侧选择模型查看详情")
@@ -154,21 +161,30 @@ struct AIModelsSettingsView: View {
             }
 
             Section("预算阈值") {
-                Stepper(
-                    value: $store.scoringBudgetThreshold,
-                    in: 0.5...100.0,
-                    step: 0.5
-                ) {
-                    HStack {
-                        Text("每批次最高（USD）")
-                        Spacer()
-                        Text(String(format: "$%.2f", store.scoringBudgetThreshold))
-                            .monospacedDigit()
-                    }
+                HStack {
+                    Text("每批次最高（USD）")
+                    Spacer()
+                    TextField(
+                        "",
+                        value: $store.scoringBudgetThreshold,
+                        format: .number.precision(.fractionLength(0...5))
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 88)
+                    .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
+                    Stepper(
+                        "",
+                        value: $store.scoringBudgetThreshold,
+                        in: 0.001...100.0,
+                        step: 0.5
+                    )
+                    .labelsHidden()
                 }
-                Text("超过此金额时评分会暂停并弹窗。已完成的组保留。")
+                Text("超过此金额时评分会暂停并弹窗。已完成的组保留。键入框可输入小数值（如 0.01）测试阈值；步进按钮以 0.5 USD 为单位粗调。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
@@ -215,16 +231,17 @@ struct AIModelsSettingsView: View {
         }
     }
 
-    /// 如果用户输入了新 API Key，写入 Keychain；空串视为"清除"；未编辑视为不动。
-    /// 在切换模型 / Tab 失焦时调用。
+    /// 如果用户输入了新 API Key，写入 Keychain。
+    ///
+    /// **关键安全契约**：空草稿**不**视为"清除"——它通常代表"用户没编辑"或者切换模型时
+    /// 的 reset 副作用。删除 key 应走显式入口（删除整个模型）。
+    /// 这样能避免 SwiftUI state cascade 导致 API Key 被误删（曾经发生过：切换 selectedID
+    /// 时 `apiKeyDraft = ""` 触发 SecureField onChange → `apiKeyEdited = true` →
+    /// 下次 flush 误把空草稿当成"清除请求"）。
     private func flushAPIKeyDraftIfNeeded(for modelID: UUID?) {
-        guard apiKeyEdited, let modelID else { return }
+        guard apiKeyEdited, let modelID, !apiKeyDraft.isEmpty else { return }
         do {
-            if apiKeyDraft.isEmpty {
-                try store.modelConfigStore.deleteAPIKey(for: modelID)
-            } else {
-                try store.modelConfigStore.setAPIKey(apiKeyDraft, for: modelID)
-            }
+            try store.modelConfigStore.setAPIKey(apiKeyDraft, for: modelID)
         } catch {
             loadError = "Keychain 写入失败：\(error.localizedDescription)"
         }
@@ -308,14 +325,16 @@ struct ModelDetailEditor: View {
         Form {
             Section("基础") {
                 TextField("名称", text: $config.name)
+                    .onSubmit { onCommit() }
                 Picker("协议", selection: $config.apiProtocol) {
                     ForEach(APIProtocol.allCases, id: \.self) { p in
                         Text(p.displayName).tag(p)
                     }
                 }
-                .onChange(of: config.apiProtocol) { _, newProtocol in
-                    // 协议变更：清空 endpoint / modelID，让 placeholder 显示新协议的默认值
-                    // （避免上次填的 Gemini URL 残留在 OpenAI 兼容协议下）
+                .onChange(of: config.apiProtocol) { oldValue, newValue in
+                    // 仅在协议真正变更时清空——避免 binding 切到不同 array element 时
+                    // SwiftUI 把"看似的值变化"误判为"用户改了协议"。
+                    guard oldValue != newValue else { return }
                     config.endpoint = ""
                     config.modelID = ""
                     onCommit()
@@ -385,7 +404,6 @@ struct ModelDetailEditor: View {
             }
         }
         .formStyle(.grouped)
-        .onChange(of: config.name) { _, _ in onCommit() }
         .confirmationDialog("删除模型？", isPresented: $showDeleteConfirm) {
             Button("删除", role: .destructive, action: onDelete)
             Button("取消", role: .cancel) {}

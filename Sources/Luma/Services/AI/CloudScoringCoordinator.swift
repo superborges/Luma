@@ -122,6 +122,22 @@ final class CloudScoringCoordinator {
 
         // 优先复用磁盘上未完成的 job（断点续传）。要求 strategy/primaryModelID 一致才算"同一批次"。
         let resumed = (try? jobStore.load(in: projectDirectory)).flatMap { $0 }
+
+        // 阈值暂停 + 实际所有组已完成 → 直接 finalize，不重跑。
+        // 仅限 .paused 状态；.completed 的旧 job 说明是前一次正常结束，用户要开新批次。
+        if let resumed,
+           resumed.strategy == strategy,
+           resumed.primaryModelID == primary.id,
+           resumed.status == .paused,
+           resumed.remainingGroups == 0 {
+            var done = resumed
+            done.status = .completed
+            currentJob = done
+            try? jobStore.save(done, in: projectDirectory)
+            emitProgress(message: "评分完成")
+            return
+        }
+
         let initialJob: ScoringJob
         if let resumed,
            resumed.strategy == strategy,
@@ -240,6 +256,9 @@ final class CloudScoringCoordinator {
     /// 阈值超出 → 暂停（同 cancel，但标记原因不同）。
     private func handleBudgetExceeded(_ snap: BudgetSnapshot) {
         guard var job = currentJob, let dir = currentJobProjectDirectory else { return }
+        // 如果所有组已完成，没有暂停的必要——避免把 .completed 覆盖成 .paused，
+        // 否则"调整阈值并继续"会误以为还有未完成的工作而重新开始。
+        guard job.remainingGroups > 0 else { return }
         runTask?.cancel()
         runTask = nil
         thresholdMonitorTask?.cancel()
@@ -266,6 +285,11 @@ final class CloudScoringCoordinator {
         switch result {
         case .success(let (groupResult, _)):
             // 1. BudgetTracker 累加
+            // 注意：budget.add 内部可能触发 thresholdCrossedStream，
+            // 导致 thresholdMonitorTask 在后续 await 暂停点抢先执行 handleBudgetExceeded。
+            // 因此必须在任何 await 之前，先把 groupStatuses 标记为 completed 并写盘，
+            // 防止 handleBudgetExceeded 保存一份"该组仍 running/pending"的脏快照，
+            // 造成断点续传时重复评分。
             let cost = groupResult.usage.cost(
                 inputUSDPerMillion: primaryConfig.costPerInputTokenUSD,
                 outputUSDPerMillion: primaryConfig.costPerOutputTokenUSD
@@ -277,14 +301,14 @@ final class CloudScoringCoordinator {
                 snap = job.budget
             }
 
-            // 2. 通知 ProjectStore 写 manifest
-            await onGroupResult(groupID, groupResult, primaryConfig)
-
-            // 3. 更新 ScoringJob 并写盘
+            // 2. 先把该组标记 completed 并写盘（必须在所有 await 之前）
             job.groupStatuses[groupID] = .completed
             job.budget = snap
             currentJob = job
             try? jobStore.save(job, in: dir)
+
+            // 3. 通知 ProjectStore 写 manifest（含 await，此后 thresholdMonitorTask 可安全介入）
+            await onGroupResult(groupID, groupResult, primaryConfig)
 
             // 4. UI 进度
             emitProgress(currentGroupName: groupName, currentModelDisplayName: primaryConfig.name)
@@ -312,6 +336,10 @@ final class CloudScoringCoordinator {
 
     private func finalizeIfDone() async {
         guard var job = currentJob, let dir = currentJobProjectDirectory else { return }
+        // 只有 .running 状态才可以过渡到 .completed。
+        // 如果 handleBudgetExceeded 已经把 job 设为 .paused，不能覆盖——
+        // 否则"调整阈值并继续"会看到 .completed 而误走"新批次"分支，导致全量重跑。
+        guard job.status == .running else { return }
         if job.remainingGroups == 0 {
             job.status = .completed
             currentJob = job

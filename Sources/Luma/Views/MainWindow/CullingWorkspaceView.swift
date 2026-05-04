@@ -51,6 +51,23 @@ struct CullingWorkspaceView: View {
         .sheet(isPresented: $store.budgetExceededAlertVisible) {
             BudgetExceededSheet(store: store, isPresented: $store.budgetExceededAlertVisible)
         }
+        // V2：把 cloudScoringErrorMessage 转成可见的 alert。
+        // 之前只赋值字段没有渠道展示——`.local` 拒绝、模型配置不全、coordinator 启动失败
+        // 等场景下用户完全看不到反馈。
+        .alert(
+            "无法启动 AI 评分",
+            isPresented: Binding(
+                get: { store.cloudScoringErrorMessage != nil },
+                set: { newValue in
+                    if !newValue { store.cloudScoringErrorMessage = nil }
+                }
+            ),
+            presenting: store.cloudScoringErrorMessage
+        ) { _ in
+            Button("好") { store.cloudScoringErrorMessage = nil }
+        } message: { message in
+            Text(message)
+        }
         .background(StitchTheme.surface)
         .onChange(of: store.selectedGroupID) { _, _ in
             burstFocusOverride = false

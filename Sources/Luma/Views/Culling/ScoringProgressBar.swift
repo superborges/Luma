@@ -26,7 +26,11 @@ struct ScoringProgressBar: View {
         // 仅在评分跑过 / 正在跑 / 失败 / 暂停时展示
         switch store.cloudScoringStatus {
         case .idle: return false
-        case .running, .paused, .failed, .completed: return store.cloudScoringProgress != nil
+        case .failed:
+            // 即使 progress 还没有事件，只要 errorMessage 存在也要显示，避免错误被静默吞掉
+            return store.cloudScoringProgress != nil || store.cloudScoringErrorMessage != nil
+        case .running, .paused, .completed:
+            return store.cloudScoringProgress != nil
         }
     }
 

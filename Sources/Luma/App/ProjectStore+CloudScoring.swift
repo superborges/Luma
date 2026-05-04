@@ -144,6 +144,16 @@ extension ProjectStore {
                 if event.budget.exceededThreshold {
                     self?.budgetExceededAlertVisible = true
                 }
+                // 评分全部完成后，延迟 3 秒自动收起进度条。
+                // 单独 detach 一个 Task，不阻塞当前监听循环。
+                if event.status == .completed {
+                    Task { @MainActor [weak self] in
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        guard self?.cloudScoringStatus == .completed else { return }
+                        self?.cloudScoringStatus = .idle
+                        self?.cloudScoringProgress = nil
+                    }
+                }
             }
         }
         return coord
