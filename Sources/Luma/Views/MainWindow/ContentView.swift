@@ -78,6 +78,18 @@ struct ContentView: View {
             Text("将把 \(store.pickedAssetsCount) 张已选照片写入「照片 App」。\n写入后无法 Luma 侧撤回；如启用了「删除未选原图」，删除环节会再弹一次系统对话框由你最终确认。")
         }
         .alert(
+            "确认丢弃未选照片",
+            isPresented: Binding(
+                get: { store.isAwaitingDiscardConfirmation },
+                set: { if !$0 { store.resolveDiscardConfirmation(false) } }
+            )
+        ) {
+            Button("永久删除", role: .destructive) { store.resolveDiscardConfirmation(true) }
+            Button("取消", role: .cancel) { store.resolveDiscardConfirmation(false) }
+        } message: {
+            Text("将永久删除 \(store.archiveCandidatesCount) 张未选照片及其 RAW 文件。此操作不可恢复。")
+        }
+        .alert(
             store.pendingImportPrompt?.title ?? "导入提示",
             isPresented: Binding(
                 get: { store.pendingImportPrompt != nil },
@@ -85,11 +97,17 @@ struct ContentView: View {
             ),
             presenting: store.pendingImportPrompt
         ) { prompt in
-            Button(prompt.confirmTitle) {
-                Task { await store.acceptPendingImportPrompt() }
-            }
-            Button("稍后", role: .cancel) {
-                store.dismissPendingImportPrompt()
+            if prompt.isActionable {
+                Button(prompt.confirmTitle) {
+                    Task { await store.acceptPendingImportPrompt() }
+                }
+                Button("稍后", role: .cancel) {
+                    store.dismissPendingImportPrompt()
+                }
+            } else {
+                Button("好") {
+                    store.dismissPendingImportPrompt()
+                }
             }
         } message: { prompt in
             Text(prompt.message)

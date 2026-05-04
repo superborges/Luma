@@ -23,14 +23,14 @@ Ingest → Group → Score → Cull → Export / Archive
 - 使用相机（Sony/Canon/Nikon/Fuji）+ iPhone 拍照的摄影爱好者
 - 一次旅行产生 300-1000 张照片
 - 拍摄格式：RAW + JPEG（相机）/ HEIC + ProRAW DNG（iPhone）
-- 后期工具：Lightroom Classic / Mac 照片 App
+- 后期工具：Lightroom Classic
 
 ### 1.4 技术栈
 
 - 语言：Swift
 - UI 框架：SwiftUI（macOS 14+）
 - 最低系统要求：macOS 14 Sonoma, Apple Silicon（M1+）优先
-- 关键系统框架：Vision, Core ML, Core Image, ImageCaptureCore, PhotoKit, AVFoundation, DiskArbitration
+- 关键系统框架：Vision, Core ML, Core Image, PhotoKit, AVFoundation, DiskArbitration
 
 ---
 
@@ -52,7 +52,7 @@ protocol ImportSourceAdapter {
 }
 ```
 
-### 2.2 四种导入源
+### 2.2 三种导入源
 
 #### 2.2.1 SD 卡导入（SDCardAdapter）
 
@@ -65,25 +65,12 @@ protocol ImportSourceAdapter {
   - 多个同名 JPEG → 取最新修改时间的
   - 相机将 RAW/JPEG 分放不同子目录 → 全局文件名匹配
 
-#### 2.2.2 iPhone USB 直连（iPhoneAdapter）
+#### 2.2.2 文件夹导入（FolderAdapter）
 
-- **框架**：ImageCaptureCore
-- **检测方式**：`ICDeviceBrowser` 设置 delegate，监听 `didAdd device` 回调
-- **文件访问**：通过 PTP 协议，必须用 `ICCameraDevice.requestDownloadFile()` 下载，不能直接访问路径
-- **权限要求**：`Info.plist` 声明 `com.apple.security.device.camera` entitlement
-- **格式处理**：
-  - 普通照片：HEIC 格式（10-bit 色深）
-  - ProRAW：标准 DNG 格式，25-50MB/张，内嵌全尺寸预览
-  - Live Photo：HEIC + MOV 配对，通过 EXIF MakerNote 中的 `ContentIdentifier` 关联
-  - 人像模式：附带 `AVDepthData` 景深数据
-
-#### 2.2.3 文件夹导入（FolderAdapter）
-
-- **触发方式**：`NSOpenPanel` 手动选择 / 监控 `~/Downloads/` 检测 AirDrop 文件
-- **文件夹监控**：`DispatchSource.makeFileSystemObjectSource` 检测新 HEIC/DNG 文件，弹窗提示导入
+- **触发方式**：`NSOpenPanel` 手动选择
 - **Live Photo 配对**：扫描同目录下的 MOV 文件，通过 ContentIdentifier 匹配
 
-#### 2.2.4 照片库导入（PhotosLibraryAdapter）
+#### 2.2.3 照片库导入（PhotosLibraryAdapter）
 
 - **框架**：PhotoKit (`PHPhotoLibrary`)
 - **用途**：整理历年 iPhone 旧照片
@@ -167,7 +154,6 @@ struct MediaAsset: Identifiable, Codable {
 
 enum ImportSource: Codable {
     case sdCard(volumePath: String)
-    case iPhone(deviceID: String)
     case folder(path: String)
     case photosLibrary(localIdentifier: String)
 }
@@ -576,28 +562,9 @@ protocol ExportDestinationAdapter {
 }
 ```
 
-### 7.2 Mac 照片 App 导出（PhotosAppExporter）
+### 7.2 Lightroom 导出（LightroomExporter）
 
-**框架**：PhotoKit (`PHPhotoLibrary`)
-
-**关键能力**：
-
-- **RAW+JPEG 合并素材**：`PHAssetCreationRequest.addResource` 同时添加 `.photo`(RAW/DNG 主资源) 和 `.alternatePhoto`(JPEG/HEIC 预览资源)，顺序不可颠倒
-- **Live Photo 完整还原**：`.addResource(with: .photo)` + `.addResource(with: .pairedVideo)`，ContentIdentifier 必须匹配
-- **保留拍摄日期**：设置 `creationDate` 为原始 EXIF 时间（否则会显示为导入日期）
-- **保留 GPS 位置**：设置 `location` 属性
-- **自动创建相册**：`PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle:)` 按分组创建
-- **可选写入 AI 评语**：作为照片描述（`PHAssetChangeRequest.creationRequest.comment`）
-
-**注意事项**：
-
-- 需要 Photos Library 写入权限
-- 写入不可撤回 → 导出前必须做确认界面
-- 沙盒 App 需要 `com.apple.security.personal-information.photos-library` entitlement
-
-### 7.3 Lightroom 导出（LightroomExporter）
-
-#### 7.3.1 Lightroom Classic（推荐方式：自动导入文件夹）
+#### 7.2.1 Lightroom Classic（推荐方式：自动导入文件夹）
 
 - 用户在 App 设置中配置 Lightroom 的自动导入文件夹路径
 - 导出时将选中照片拷贝到该文件夹
@@ -636,12 +603,12 @@ protocol ExportDestinationAdapter {
 <crs:HasCrop>True</crs:HasCrop>
 ```
 
-#### 7.3.2 Lightroom CC
+#### 7.2.2 Lightroom CC
 
 - 导出到本地文件夹，用户手动导入
 - XMP 中 Rating 和 Keywords 可被 CC 读取
 
-### 7.4 本地文件夹导出（FolderExporter）
+### 7.3 本地文件夹导出（FolderExporter）
 
 三种目录组织模板可选：
 
@@ -651,16 +618,11 @@ protocol ExportDestinationAdapter {
 
 可选附带 XMP sidecar 文件。
 
-### 7.5 导出选项界面
+### 7.4 导出选项界面
 
 ```swift
 struct ExportOptions {
-    var destination: ExportDestination       // .photosApp / .lightroom / .folder
-    // 照片 App 选项
-    var createAlbumPerGroup: Bool            // 按分组创建相册
-    var mergeRawAndJpeg: Bool               // RAW+JPEG 合并为单素材
-    var preserveLivePhoto: Bool             // 保留 Live Photo
-    var includeAICommentAsDescription: Bool  // AI 评语写入描述
+    var destination: ExportDestination       // .lightroom / .folder
     // Lightroom 选项
     var lrAutoImportFolder: URL?            // 自动导入文件夹路径
     var writeXmpSidecar: Bool               // 生成 XMP
@@ -720,7 +682,6 @@ struct ExportOptions {
 
 - 默认导入目录
 - 缩略图缓存大小上限
-- 语言偏好（中文/英文/跟随系统）
 
 ### 9.2 AI 模型配置
 
@@ -746,8 +707,7 @@ struct ExportOptions {
 
 | 权限       | 用途                 | entitlement                                              |
 | -------- | ------------------ | -------------------------------------------------------- |
-| 相机设备     | iPhone USB 访问      | `com.apple.security.device.camera`                       |
-| 照片库      | 导出到照片 App / 从照片库导入 | `com.apple.security.personal-information.photos-library` |
+| 照片库      | 从照片库导入             | `com.apple.security.personal-information.photos-library` |
 | 文件访问     | SD 卡读取、文件夹导出       | `com.apple.security.files.user-selected.read-write`      |
 | 网络       | API 调用             | `com.apple.security.network.client`                      |
 | Keychain | API Key 安全存储       | 默认可用                                                     |

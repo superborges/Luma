@@ -13,13 +13,14 @@ enum XMPWriter {
         case .pending: "Yellow"
         case .rejected: "Red"
         }
-        let description = xmlEscaped(asset.aiScore?.comment ?? "")
-        let subject = xmlEscaped(group?.name ?? "")
-        let keywords = xmlEscaped(group?.name ?? "")
+
+        let descriptionText = xmlEscaped(asset.aiScore?.comment ?? "")
+        let subjectKeywords = buildSubjectKeywords(asset: asset, group: group)
+        let hierarchicalSubject = group?.name ?? ""
         let adjustments = includeEditSuggestions ? adjustmentFragment(for: asset.editSuggestions) : ""
 
         return """
-        <?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
+        <?xpacket begin="\u{FEFF}" id="W5M0MpCehiHzreSzNTczkc9d"?>
         <x:xmpmeta xmlns:x="adobe:ns:meta/">
           <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
             <rdf:Description
@@ -28,10 +29,14 @@ enum XMPWriter {
               xmlns:lr="http://ns.adobe.com/lightroom/1.0/"
               xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/"
               xmp:Rating="\(rating)"
-              xmp:Label="\(label)"
-              dc:description="\(description)"
-              dc:subject="\(keywords)"
-              lr:hierarchicalSubject="\(subject)">
+              xmp:Label="\(label)">
+              <dc:description>
+                <rdf:Alt>
+                  <rdf:li xml:lang="x-default">\(descriptionText)</rdf:li>
+                </rdf:Alt>
+              </dc:description>
+              \(subjectBagXML(subjectKeywords))
+              \(hierarchicalSubjectBagXML(hierarchicalSubject))
               \(adjustments)
             </rdf:Description>
           </rdf:RDF>
@@ -39,6 +44,36 @@ enum XMPWriter {
         <?xpacket end="w"?>
         """
     }
+
+    // MARK: - Keywords
+
+    private static func buildSubjectKeywords(asset: MediaAsset, group: PhotoGroup?) -> [String] {
+        var keywords: [String] = []
+
+        if let groupName = group?.name, !groupName.isEmpty {
+            keywords.append(groupName)
+        }
+
+        for issue in asset.issues {
+            keywords.append(issue.label)
+        }
+
+        return keywords
+    }
+
+    private static func subjectBagXML(_ keywords: [String]) -> String {
+        guard !keywords.isEmpty else { return "<dc:subject><rdf:Bag/></dc:subject>" }
+        let items = keywords.map { "<rdf:li>\(xmlEscaped($0))</rdf:li>" }
+        let inner = items.map { "                \($0)" }.joined(separator: "\n")
+        return "<dc:subject>\n                <rdf:Bag>\n\(inner)\n                </rdf:Bag>\n              </dc:subject>"
+    }
+
+    private static func hierarchicalSubjectBagXML(_ subject: String) -> String {
+        guard !subject.isEmpty else { return "" }
+        return "<lr:hierarchicalSubject>\n                <rdf:Bag>\n                <rdf:li>\(xmlEscaped(subject))</rdf:li>\n                </rdf:Bag>\n              </lr:hierarchicalSubject>"
+    }
+
+    // MARK: - Rating
 
     private static func starRating(for asset: MediaAsset) -> Int {
         if let userRating = asset.userRating {
@@ -60,6 +95,8 @@ enum XMPWriter {
         }
     }
 
+    // MARK: - Escaping
+
     private static func xmlEscaped(_ text: String) -> String {
         text
             .replacingOccurrences(of: "&", with: "&amp;")
@@ -67,6 +104,8 @@ enum XMPWriter {
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
     }
+
+    // MARK: - Edit Suggestions
 
     private static func adjustmentFragment(for suggestions: EditSuggestions?) -> String {
         guard let suggestions else { return "" }

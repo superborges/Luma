@@ -55,6 +55,8 @@ struct ModelConfig: Codable, Hashable, Identifiable, Sendable {
     /// 单价（USD per 1M tokens）。可选；用于 BudgetTracker 计费。
     var costPerInputTokenUSD: Double?
     var costPerOutputTokenUSD: Double?
+    /// 评分校准结果。nil 表示未校准。
+    var calibration: CalibrationResult?
 
     init(
         id: UUID = UUID(),
@@ -66,7 +68,8 @@ struct ModelConfig: Codable, Hashable, Identifiable, Sendable {
         isActive: Bool = true,
         maxConcurrency: Int = 4,
         costPerInputTokenUSD: Double? = nil,
-        costPerOutputTokenUSD: Double? = nil
+        costPerOutputTokenUSD: Double? = nil,
+        calibration: CalibrationResult? = nil
     ) {
         self.id = id
         self.name = name
@@ -78,6 +81,7 @@ struct ModelConfig: Codable, Hashable, Identifiable, Sendable {
         self.maxConcurrency = max(1, maxConcurrency)
         self.costPerInputTokenUSD = costPerInputTokenUSD
         self.costPerOutputTokenUSD = costPerOutputTokenUSD
+        self.calibration = calibration
     }
 }
 

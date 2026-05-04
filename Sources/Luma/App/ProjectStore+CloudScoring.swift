@@ -64,17 +64,29 @@ extension ProjectStore {
         let providerString = "cloud:\(providerConfig.apiProtocol.rawValue):\(providerConfig.modelID)"
         let now = Date()
 
-        // 写每张照片评分。Index 1-based；越界保护。
+        let calibration = providerConfig.calibration
+
         for perPhoto in result.perPhoto {
             let zeroBased = perPhoto.index - 1
             guard zeroBased >= 0, zeroBased < assetIDs.count else { continue }
             let assetID = assetIDs[zeroBased]
             guard let assetIndex = sessions[i].assets.firstIndex(where: { $0.id == assetID }) else { continue }
 
+            let finalScores: PhotoScores
+            let finalOverall: Int
+            if let cal = calibration {
+                (finalScores, finalOverall) = ScoreCalibrator.normalize(
+                    scores: perPhoto.scores, overall: perPhoto.overall, using: cal
+                )
+            } else {
+                finalScores = perPhoto.scores
+                finalOverall = perPhoto.overall
+            }
+
             let aiScore = AIScore(
                 provider: providerString,
-                scores: perPhoto.scores,
-                overall: perPhoto.overall,
+                scores: finalScores,
+                overall: finalOverall,
                 comment: perPhoto.comment,
                 recommended: perPhoto.recommended,
                 timestamp: now
@@ -96,6 +108,59 @@ extension ProjectStore {
         invalidateAllCachesAfterDirectMutation()
 
         // 立即落盘（断点续传场景，每组写一次）
+        persistManifestNow()
+    }
+}
+
+// MARK: - AI 组名生成
+
+extension ProjectStore {
+
+    /// 手动或自动触发 AI 组名生成。串行对每组调用 primary 模型。
+    func generateAIGroupNames() async {
+        guard let i = activeSessionIndexInternal else { return }
+        let groups = sessions[i].groups
+        let assets = sessions[i].assets
+        guard !groups.isEmpty else { return }
+
+        let primary: ModelConfig
+        let apiKey: String
+        do {
+            let configs = try modelConfigStore.loadConfigs()
+            guard let p = configs.first(where: { $0.isActive && $0.role == .primary }) else { return }
+            primary = p
+            guard let key = try modelConfigStore.apiKey(for: primary.id), !key.isEmpty else { return }
+            apiKey = key
+        } catch {
+            RuntimeTrace.event(
+                "ai_group_naming_failed",
+                category: "ai_scoring",
+                metadata: ["error": error.localizedDescription]
+            )
+            return
+        }
+
+        await AIGroupNamer.generateNames(
+            groups: groups,
+            assets: assets,
+            config: primary,
+            apiKey: apiKey
+        ) { [weak self] result in
+            self?.applyGroupName(result)
+        }
+    }
+
+    /// 将 AI 生成的组名写入 PhotoGroup.name 并持久化。
+    private func applyGroupName(_ result: AIGroupNamer.NamingResult) {
+        guard result.isAIGenerated,
+              let i = activeSessionIndexInternal,
+              let groupIndex = sessions[i].groups.firstIndex(where: { $0.id == result.groupID }) else {
+            return
+        }
+
+        sessions[i].groups[groupIndex].name = result.name
+        sessions[i].updatedAt = .now
+        invalidateAllCachesAfterDirectMutation()
         persistManifestNow()
     }
 }
@@ -144,9 +209,12 @@ extension ProjectStore {
                 if event.budget.exceededThreshold {
                     self?.budgetExceededAlertVisible = true
                 }
-                // 评分全部完成后，延迟 3 秒自动收起进度条。
-                // 单独 detach 一个 Task，不阻塞当前监听循环。
                 if event.status == .completed {
+                    // 评分完成后自动触发 AI 组名生成
+                    Task { @MainActor [weak self] in
+                        await self?.generateAIGroupNames()
+                    }
+                    // 延迟 3 秒自动收起进度条
                     Task { @MainActor [weak self] in
                         try? await Task.sleep(nanoseconds: 3_000_000_000)
                         guard self?.cloudScoringStatus == .completed else { return }

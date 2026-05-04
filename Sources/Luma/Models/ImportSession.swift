@@ -197,13 +197,39 @@ struct ImportSession: Codable, Identifiable, Hashable {
     }
 }
 
+/// SD 卡快速扫描汇总（附在导入提示弹窗上）。
+struct SDCardScanInfo: Hashable, Sendable {
+    let photoCount: Int
+    let rawFormatSummary: String
+
+    init(photoCount: Int, rawFormatSummary: String) {
+        self.photoCount = photoCount
+        self.rawFormatSummary = rawFormatSummary
+    }
+
+    init(summary: DCIMScanner.Summary) {
+        self.photoCount = summary.photoCount
+        if summary.rawFormatDistribution.isEmpty {
+            rawFormatSummary = ""
+        } else {
+            let parts = summary.rawFormatDistribution
+                .sorted { $0.value > $1.value }
+                .map { "\($0.key) ×\($0.value)" }
+            rawFormatSummary = parts.joined(separator: "、")
+        }
+    }
+}
+
 enum PendingImportPrompt: Hashable, Identifiable {
     case importSource(ImportSourceDescriptor)
+    case sdCardImport(ImportSourceDescriptor, SDCardScanInfo)
     case resumeSession(ImportSession)
 
     var id: String {
         switch self {
         case .importSource(let source):
+            return "import:\(source.stableID)"
+        case .sdCardImport(let source, _):
             return "import:\(source.stableID)"
         case .resumeSession(let session):
             return "resume:\(session.id.uuidString)"
@@ -214,6 +240,8 @@ enum PendingImportPrompt: Hashable, Identifiable {
         switch self {
         case .importSource:
             return "检测到可导入设备"
+        case .sdCardImport:
+            return "检测到 SD 卡"
         case .resumeSession:
             return "发现未完成的导入"
         }
@@ -223,8 +251,17 @@ enum PendingImportPrompt: Hashable, Identifiable {
         switch self {
         case .importSource(let source):
             return "检测到 \(source.displayName)，是否立即开始导入？"
+        case .sdCardImport(let source, let info):
+            if info.photoCount == 0 {
+                return "\(source.displayName) 中未检测到照片（需要 DCIM 目录）。"
+            }
+            var msg = "检测到 \(source.displayName)，共 \(info.photoCount) 张照片。"
+            if !info.rawFormatSummary.isEmpty {
+                msg += "\nRAW 格式：\(info.rawFormatSummary)"
+            }
+            return msg
         case .resumeSession(let session):
-            return "“\(session.displayProjectName)” 还有未完成的导入。\n\(session.progressSummary)"
+            return "\u{201C}\(session.displayProjectName)\u{201D} 还有未完成的导入。\n\(session.progressSummary)"
         }
     }
 
@@ -232,8 +269,20 @@ enum PendingImportPrompt: Hashable, Identifiable {
         switch self {
         case .importSource:
             return "开始导入"
+        case .sdCardImport(_, let info):
+            return info.photoCount > 0 ? "开始导入" : "好"
         case .resumeSession:
             return "继续导入"
+        }
+    }
+
+    /// SD 卡无照片时不允许导入。
+    var isActionable: Bool {
+        switch self {
+        case .sdCardImport(_, let info):
+            return info.photoCount > 0
+        default:
+            return true
         }
     }
 }

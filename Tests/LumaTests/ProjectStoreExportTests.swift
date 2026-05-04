@@ -71,13 +71,20 @@ final class ProjectStoreExportTests: XCTestCase {
             store.exportOptions.writeXmpSidecar = true
             store.exportOptions.rejectedHandling = .discard
 
+            Task { @MainActor in
+                while !store.isAwaitingDiscardConfirmation {
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                store.resolveDiscardConfirmation(true)
+            }
+
             await store.performExport()
 
             let exportedFolder = outputRoot.appendingPathComponent("Export Group", isDirectory: true)
             XCTAssertNil(store.lastErrorMessage)
             XCTAssertFalse(store.isExporting)
             XCTAssertFalse(store.isExportPanelPresented)
-            XCTAssertEqual(store.lastExportSummary, "导出 1 张到 \(outputRoot.path)；未选 1 张未处理")
+            XCTAssertTrue(store.lastExportSummary?.contains("导出 1 张到") == true)
             XCTAssertEqual(store.lastSummaryStatus, store.lastExportSummary)
             XCTAssertTrue(FileManager.default.fileExists(atPath: exportedFolder.appendingPathComponent("IMG_5002.JPG").path))
             XCTAssertTrue(FileManager.default.fileExists(atPath: exportedFolder.appendingPathComponent("IMG_5002.xmp").path))

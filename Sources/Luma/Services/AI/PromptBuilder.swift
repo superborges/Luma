@@ -84,6 +84,31 @@ enum PromptBuilder {
         return (system, lines.joined(separator: "\n"))
     }
 
+    // MARK: - Group naming
+
+    /// AI 组名生成 Prompt。要求返回纯文本（非 JSON），≤ 8 个汉字。
+    static func groupNamingPrompt(currentName: String, location: String?, photoCount: Int) -> (system: String, user: String) {
+        let system = """
+        你是一位专业摄影师的照片管理助手。根据照片内容，为这组照片生成一个简短的描述性名称。
+        规则：
+        - 仅返回名称文本，不要返回 JSON、不要加引号、不要有任何多余文字
+        - 名称 ≤ 8 个汉字
+        - 格式：「地点·场景」或「主题·氛围」
+        - 如果照片包含明显的地标或场景，用地点名
+        - 如果照片是某个活动或主题，用主题描述
+        - 简洁有力，避免泛泛之词如「日常」「随拍」
+        """
+
+        var lines: [String] = []
+        lines.append("这组照片共 \(photoCount) 张，当前名称：「\(currentName)」。")
+        if let loc = location {
+            lines.append("拍摄位置：\(loc)")
+        }
+        lines.append("请根据照片内容生成一个更好的描述性名称。")
+
+        return (system, lines.joined(separator: "\n"))
+    }
+
     // MARK: - Detailed analysis
 
     /// 单张精评 + 修图建议 Prompt。

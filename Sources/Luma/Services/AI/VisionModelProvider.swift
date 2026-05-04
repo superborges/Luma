@@ -111,4 +111,126 @@ enum ProviderHTTPSupport {
         }
         return url
     }
+
+    // MARK: - 轻量级请求构建（AIGroupNamer 等非评分场景共用）
+
+    struct LightRequestParams {
+        let systemPrompt: String
+        let userPrompt: String
+        let images: [ProviderImagePayload]
+        let config: ModelConfig
+        let apiKey: String
+        var temperature: Double = 0.3
+        var maxTokens: Int = 50
+    }
+
+    /// 根据 apiProtocol 构建完整的 URLRequest（含 body）。
+    static func buildLightRequest(_ params: LightRequestParams) throws -> URLRequest {
+        let endpointURL = try parseEndpoint(params.config.endpoint)
+        switch params.config.apiProtocol {
+        case .openAICompatible: return try buildOpenAILightRequest(params, endpoint: endpointURL)
+        case .anthropicMessages: return try buildAnthropicLightRequest(params, endpoint: endpointURL)
+        case .googleGemini:     return try buildGeminiLightRequest(params, endpoint: endpointURL)
+        }
+    }
+
+    /// 从 API 响应中提取纯文本内容（适用于非 JSON 输出场景）。
+    static func extractPlainText(from data: Data, apiProtocol: APIProtocol) -> String {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return String(data: data, encoding: .utf8) ?? ""
+        }
+        switch apiProtocol {
+        case .openAICompatible:
+            if let choices = json["choices"] as? [[String: Any]],
+               let message = choices.first?["message"] as? [String: Any],
+               let content = message["content"] as? String { return content }
+        case .anthropicMessages:
+            if let content = json["content"] as? [[String: Any]],
+               let text = content.first?["text"] as? String { return text }
+        case .googleGemini:
+            if let candidates = json["candidates"] as? [[String: Any]],
+               let content = candidates.first?["content"] as? [String: Any],
+               let parts = content["parts"] as? [[String: Any]],
+               let text = parts.first?["text"] as? String { return text }
+        }
+        return ""
+    }
+
+    // MARK: - Private builders
+
+    private static func buildOpenAILightRequest(_ p: LightRequestParams, endpoint: URL) throws -> URLRequest {
+        let url = endpoint.appendingPathComponent("chat/completions")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(p.apiKey)", forHTTPHeaderField: "Authorization")
+
+        var userContent: [[String: Any]] = [["type": "text", "text": p.userPrompt]]
+        for image in p.images {
+            userContent.append([
+                "type": "image_url",
+                "image_url": ["url": "data:\(image.mimeType);base64,\(image.base64)"]
+            ])
+        }
+        let body: [String: Any] = [
+            "model": p.config.modelID,
+            "messages": [
+                ["role": "system", "content": p.systemPrompt],
+                ["role": "user", "content": userContent]
+            ],
+            "temperature": p.temperature,
+            "max_tokens": p.maxTokens
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        return req
+    }
+
+    private static func buildAnthropicLightRequest(_ p: LightRequestParams, endpoint: URL) throws -> URLRequest {
+        let url = endpoint.appendingPathComponent("messages")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(p.apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+
+        var content: [[String: Any]] = []
+        for image in p.images {
+            content.append([
+                "type": "image",
+                "source": ["type": "base64", "media_type": image.mimeType, "data": image.base64]
+            ])
+        }
+        content.append(["type": "text", "text": p.userPrompt])
+
+        let body: [String: Any] = [
+            "model": p.config.modelID,
+            "system": p.systemPrompt,
+            "messages": [["role": "user", "content": content]],
+            "max_tokens": p.maxTokens,
+            "temperature": p.temperature
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        return req
+    }
+
+    private static func buildGeminiLightRequest(_ p: LightRequestParams, endpoint: URL) throws -> URLRequest {
+        let urlStr = "\(endpoint.absoluteString)/models/\(p.config.modelID):generateContent?key=\(p.apiKey)"
+        guard let url = URL(string: urlStr) else {
+            throw LumaError.configurationInvalid("Gemini endpoint 无效")
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var parts: [[String: Any]] = [["text": p.systemPrompt + "\n\n" + p.userPrompt]]
+        for image in p.images {
+            parts.append(["inline_data": ["mime_type": image.mimeType, "data": image.base64]])
+        }
+        let body: [String: Any] = [
+            "contents": [["parts": parts]],
+            "generationConfig": ["temperature": p.temperature, "maxOutputTokens": p.maxTokens]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        return req
+    }
 }

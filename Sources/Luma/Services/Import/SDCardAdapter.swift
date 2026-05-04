@@ -17,7 +17,7 @@ struct SDCardAdapter: ImportSourceAdapter {
 
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(2))
-                    let currentState = Self.isSupportedVolume(monitoredVolume) ? ConnectionState.connected : .disconnected
+                    let currentState: ConnectionState = Self.isSupportedVolume(monitoredVolume) ? .connected : .disconnected
                     if currentState != previousState {
                         continuation.yield(currentState)
                         previousState = currentState
@@ -36,12 +36,17 @@ struct SDCardAdapter: ImportSourceAdapter {
             throw LumaError.unsupported("所选目录不包含 DCIM，无法作为 SD 卡导入。")
         }
 
+        let root = importRoot
+        let volumePath = volumeURL.path
         return try await Task.detached(priority: .userInitiated) {
-            try MediaFileScanner.scan(
-                rootFolder: importRoot,
-                source: .sdCard(volumePath: volumeURL.path)
-            )
+            let files = try DCIMScanner.scan(dcimRoot: root)
+            return RAWJPEGPairer.pair(files: files, source: .sdCard(volumePath: volumePath))
         }.value
+    }
+
+    /// 快速扫描汇总（弹窗展示用，不做完整配对）。
+    func quickSummary() -> DCIMScanner.Summary {
+        DCIMScanner.quickSummary(dcimRoot: importRoot)
     }
 
     func fetchThumbnail(_ item: DiscoveredItem) async -> CGImage? {

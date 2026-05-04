@@ -127,6 +127,7 @@ struct AIModelsSettingsView: View {
                 apiKeyDraft: $apiKeyDraft,
                 apiKeyEdited: $apiKeyEdited,
                 testStatus: testStatus[id] ?? .idle,
+                modelConfigStore: store.modelConfigStore,
                 onCommit: { persistAllConfigs() },
                 onDelete: { deleteModel(at: index) },
                 onTest: { Task { await testConnection(at: index) } }
@@ -307,6 +308,12 @@ enum TestConnectionStatus: Equatable {
     case failed(String)
 }
 
+enum CalibrationStatus: Equatable {
+    case idle
+    case running(completed: Int, total: Int)
+    case failed(String)
+}
+
 // MARK: - Detail editor
 
 struct ModelDetailEditor: View {
@@ -314,12 +321,16 @@ struct ModelDetailEditor: View {
     @Binding var apiKeyDraft: String
     @Binding var apiKeyEdited: Bool
     let testStatus: TestConnectionStatus
+    let modelConfigStore: ModelConfigStore
     /// 任意字段变更后调用，触发即时保存（不写 API Key）。API Key 走切换 / 失焦时单独 flush。
     let onCommit: () -> Void
     let onDelete: () -> Void
     let onTest: () -> Void
 
     @State private var showDeleteConfirm: Bool = false
+    @State private var showCalibrationConfirm: Bool = false
+    @State private var calibrationStatus: CalibrationStatus = .idle
+    @State private var calibrationTask: Task<Void, Never>?
 
     var body: some View {
         Form {
@@ -332,8 +343,6 @@ struct ModelDetailEditor: View {
                     }
                 }
                 .onChange(of: config.apiProtocol) { oldValue, newValue in
-                    // 仅在协议真正变更时清空——避免 binding 切到不同 array element 时
-                    // SwiftUI 把"看似的值变化"误判为"用户改了协议"。
                     guard oldValue != newValue else { return }
                     config.endpoint = ""
                     config.modelID = ""
@@ -361,6 +370,8 @@ struct ModelDetailEditor: View {
                 Stepper("并发上限：\(config.maxConcurrency)", value: $config.maxConcurrency, in: 1...10)
                     .onChange(of: config.maxConcurrency) { _, _ in onCommit() }
             }
+
+            calibrationSection
 
             Section("单价（USD per 1M tokens，可留空）") {
                 TextField(
@@ -409,6 +420,120 @@ struct ModelDetailEditor: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text("将删除模型配置并清除 Keychain 中的 API Key。此操作不可撤销。")
+        }
+        .alert("校准评分", isPresented: $showCalibrationConfirm) {
+            Button("开始校准") { startCalibration() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("将使用 20 张内置参考照对该模型评分，计算分数分布参数。预估费用约 $0.02。")
+        }
+        .onDisappear {
+            calibrationTask?.cancel()
+        }
+    }
+
+    // MARK: - Calibration Section
+
+    @ViewBuilder
+    private var calibrationSection: some View {
+        Section("评分校准") {
+            if let cal = config.calibration {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("已校准")
+                            .font(.callout)
+                            .foregroundStyle(.green)
+                        Text("μ = \(String(format: "%.1f", cal.mean))  σ = \(String(format: "%.1f", cal.standardDeviation))  (n=\(cal.sampleCount))")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                        if !cal.isUsable {
+                            Text("⚠ σ < 1：模型输出无差异，归一化已跳过")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    Spacer()
+                    calibrationActionButton(label: "重新校准")
+                }
+            } else {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("未校准")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Text("使用原始评分。校准后可跨模型对比分数。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    calibrationActionButton(label: "校准评分")
+                }
+            }
+
+            switch calibrationStatus {
+            case .running(let completed, let total):
+                ProgressView(value: Double(completed), total: Double(total)) {
+                    Text("评分中 \(completed)/\(total)")
+                        .font(.caption)
+                        .monospacedDigit()
+                }
+            case .failed(let message):
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            case .idle:
+                EmptyView()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func calibrationActionButton(label: String) -> some View {
+        if case .running = calibrationStatus {
+            Button("取消") {
+                calibrationTask?.cancel()
+                calibrationTask = nil
+                calibrationStatus = .idle
+            }
+        } else {
+            Button(label) {
+                showCalibrationConfirm = true
+            }
+        }
+    }
+
+    private func startCalibration() {
+        calibrationStatus = .running(completed: 0, total: 20)
+        calibrationTask = Task {
+            do {
+                let key: String
+                if apiKeyEdited, !apiKeyDraft.isEmpty {
+                    key = apiKeyDraft
+                } else if let stored = try modelConfigStore.apiKey(for: config.id), !stored.isEmpty {
+                    key = stored
+                } else {
+                    calibrationStatus = .failed("未设置 API Key")
+                    return
+                }
+                let provider = DefaultProviderFactory().makeProvider(config: config, apiKey: key)
+                let result = try await ScoreCalibrator.calibrate(
+                    provider: provider,
+                    onProgress: { completed, total in
+                        Task { @MainActor in
+                            calibrationStatus = .running(completed: completed, total: total)
+                        }
+                    }
+                )
+                try Task.checkCancellation()
+                config.calibration = result
+                onCommit()
+                calibrationStatus = .idle
+            } catch is CancellationError {
+                calibrationStatus = .idle
+            } catch {
+                calibrationStatus = .failed(error.localizedDescription)
+            }
         }
     }
 

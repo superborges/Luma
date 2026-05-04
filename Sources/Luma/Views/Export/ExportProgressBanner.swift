@@ -50,6 +50,7 @@ struct ExportProgressBanner: View {
         case .fetchingOriginals: return "icloud.and.arrow.down"
         case .writing: return "square.and.arrow.up"
         case .cleaning: return "trash"
+        case .archiving: return "archivebox"
         case .finalizing: return "checkmark.seal"
         }
     }
@@ -69,6 +70,11 @@ struct ExportProgressBanner: View {
             return progress.total > 0 ? "正在写入 \(progress.total) 张…" : "正在写入…"
         case .cleaning:
             return "整理源相册…"
+        case .archiving:
+            if progress.total > 0 {
+                return "归档处理 \(progress.completed)/\(progress.total)"
+            }
+            return "归档未选照片…"
         case .finalizing:
             return "整理结果…"
         }

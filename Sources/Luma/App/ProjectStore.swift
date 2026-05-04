@@ -12,6 +12,7 @@ enum ExportPhase: String {
     case fetchingOriginals // 仅 Photos 源 → Folder/LR 路径
     case writing           // 调用 destination adapter.export 中
     case cleaning          // Photos App 路径下，处理删除/清理
+    case archiving         // 归档未选照片（视频 / 缩小 / 丢弃）
     case finalizing
 }
 
@@ -259,6 +260,9 @@ final class ProjectStore {
     /// Photos App 路径写入前的二次确认弹窗状态。`true` = 弹窗显示中。
     var isAwaitingPhotosWriteConfirmation: Bool = false
     private var pendingPhotosWriteContinuation: CheckedContinuation<Bool, Never>?
+    /// 丢弃未选照片的二次确认弹窗。
+    var isAwaitingDiscardConfirmation: Bool = false
+    private var pendingDiscardContinuation: CheckedContinuation<Bool, Never>?
 
     private var hasBootstrapped = false
     private var isImportMonitoringStarted = false
@@ -521,6 +525,18 @@ final class ProjectStore {
 
     var archiveCandidatesCount: Int {
         assets.filter { $0.userDecision != .picked }.count
+    }
+
+    var archiveCandidates: [MediaAsset] {
+        assets.filter { $0.userDecision != .picked }
+    }
+
+    var archiveEstimatedOutputSize: Int64 {
+        VideoArchiver.estimateArchiveSize(assets: archiveCandidates, handling: exportOptions.rejectedHandling)
+    }
+
+    var archiveEstimatedFreedSpace: Int64 {
+        VideoArchiver.estimateFreedSpace(assets: archiveCandidates, handling: exportOptions.rejectedHandling)
     }
 
     /// 当前 session 是否存在源 = 照片 App 的资产。用于决定是否显示「清理源相册」面板。
@@ -1030,6 +1046,12 @@ final class ProjectStore {
         switch prompt {
         case .importSource(let source):
             await importDetectedSource(source)
+        case .sdCardImport(let source, let info):
+            guard info.photoCount > 0 else {
+                presentNextImportPromptIfPossible()
+                return
+            }
+            await importDetectedSource(source)
         case .resumeSession(let session):
             await continueImport(session)
         }
@@ -1359,6 +1381,17 @@ final class ProjectStore {
                 }
             }
 
+            if exportOptions.rejectedHandling == .discard,
+               assets.contains(where: { $0.userDecision != .picked }) {
+                let discardConfirmed = await requestDiscardConfirmation()
+                if !discardConfirmed {
+                    traceEvent("discard_cancelled_by_user", category: "export")
+                    isExporting = false
+                    exportProgress = nil
+                    return
+                }
+            }
+
             exportProgress = ExportProgress(phase: .writing, completed: 0, total: pickedAssets.count, currentName: nil)
             let result = try await adapter.export(assets: assets, groups: groups, options: exportOptions)
             var archiveSummary: String?
@@ -1442,6 +1475,23 @@ final class ProjectStore {
         isAwaitingPhotosWriteConfirmation = false
         let continuation = pendingPhotosWriteContinuation
         pendingPhotosWriteContinuation = nil
+        continuation?.resume(returning: accepted)
+    }
+
+    @MainActor
+    private func requestDiscardConfirmation() async -> Bool {
+        if isAwaitingDiscardConfirmation { return false }
+        isAwaitingDiscardConfirmation = true
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            self.pendingDiscardContinuation = continuation
+        }
+    }
+
+    func resolveDiscardConfirmation(_ accepted: Bool) {
+        guard isAwaitingDiscardConfirmation else { return }
+        isAwaitingDiscardConfirmation = false
+        let continuation = pendingDiscardContinuation
+        pendingDiscardContinuation = nil
         continuation?.resume(returning: accepted)
     }
 
@@ -1582,21 +1632,33 @@ final class ProjectStore {
         }
     }
 
+    private let diskArbitrationMonitor = DiskArbitrationMonitor()
+
     private func startImportSourceMonitoring() {
         guard !isImportMonitoringStarted else { return }
         isImportMonitoringStarted = true
 
-        importSourceMonitor.start { [weak self] source in
+        let onDetected: @Sendable (ImportSourceDescriptor) -> Void = { [weak self] source in
             Task { @MainActor in
                 self?.handleDetectedImportSource(source)
             }
         }
-        // 周期刷新 detectedImportSources，让"iPhone 已连接"等菜单状态可视化。
-        Task { @MainActor [weak self] in
-            while let self {
-                self.detectedImportSources = await ImportSourceMonitor.detectSources()
-                try? await Task.sleep(for: .seconds(5))
+
+        importSourceMonitor.start(onDetected: onDetected)
+
+        // 唯一的 DiskArbitration session：SD 卡插拔事件同时驱动
+        // 1. importSourceMonitor 新设备检测（弹窗）
+        // 2. detectedImportSources 菜单状态刷新
+        diskArbitrationMonitor.start { [weak self] _ in
+            Task { @MainActor in
+                self?.importSourceMonitor.triggerPoll(onDetected: onDetected)
+                self?.detectedImportSources = await ImportSourceMonitor.detectSources()
             }
+        }
+
+        // 启动时立即刷新一次
+        Task { @MainActor [weak self] in
+            self?.detectedImportSources = await ImportSourceMonitor.detectSources()
         }
     }
 
@@ -1646,6 +1708,18 @@ final class ProjectStore {
 
         if let recoverableImportSession, recoverableImportSession.source.stableID == source.stableID {
             enqueueImportPrompt(.resumeSession(recoverableImportSession))
+            return
+        }
+
+        if case .sdCard(let volumePath, _) = source {
+            Task.detached(priority: .userInitiated) { [weak self] in
+                let adapter = SDCardAdapter(volumeURL: URL(filePath: volumePath))
+                let summary = adapter.quickSummary()
+                let scanInfo = SDCardScanInfo(summary: summary)
+                Task { @MainActor in
+                    self?.enqueueImportPrompt(.sdCardImport(source, scanInfo))
+                }
+            }
             return
         }
 
@@ -2128,17 +2202,38 @@ final class ProjectStore {
         let archiveCandidates = assets.filter { $0.userDecision != .picked }
         guard !archiveCandidates.isEmpty else { return nil }
 
+        exportProgress = ExportProgress(phase: .archiving, completed: 0, total: archiveCandidates.count, currentName: nil)
+
+        let progressHandler: @Sendable (ArchiveProgress) -> Void = { [weak self] progress in
+            Task { @MainActor in
+                self?.exportProgress = ExportProgress(
+                    phase: .archiving,
+                    completed: progress.completed,
+                    total: progress.total,
+                    currentName: progress.currentName
+                )
+            }
+        }
+
         switch exportOptions.rejectedHandling {
         case .discard:
-            return "未选 \(archiveCandidates.count) 张未处理"
+            let discardResult = await videoArchiver.discard(assets: archiveCandidates, onProgress: progressHandler)
+            let freedMB = discardResult.freedBytes / 1_048_576
+            return "已删除 \(discardResult.deletedCount) 个文件，释放 \(freedMB) MB"
         case .archiveVideo:
             let batchName = "\(projectName)_\(ISO8601DateFormatter().string(from: .now))"
-            let result = try await videoArchiver.archive(groups: groups, assets: archiveCandidates, batchName: batchName)
-            return "生成 \(result.generatedFiles.count) 个归档视频到 \(result.outputDirectory.lastPathComponent)"
+            let result = try await videoArchiver.archive(groups: groups, assets: archiveCandidates, batchName: batchName, onProgress: progressHandler)
+            var summary = "生成 \(result.generatedFiles.count) 个归档视频到 \(result.outputDirectory.lastPathComponent)"
+            if result.skippedCount > 0 { summary += "（跳过 \(result.skippedCount) 组）" }
+            return summary
         case .shrinkKeep:
             let batchName = "\(projectName)_\(ISO8601DateFormatter().string(from: .now))"
-            let result = try await videoArchiver.shrinkKeep(assets: archiveCandidates, batchName: batchName)
-            return "缩小归档 \(result.generatedFiles.count) 张到 \(result.outputDirectory.lastPathComponent)"
+            let result = try await videoArchiver.shrinkKeep(assets: archiveCandidates, batchName: batchName, onProgress: progressHandler)
+            let freedMB = result.freedBytes / 1_048_576
+            var summary = "缩小归档 \(result.generatedFiles.count) 张到 \(result.outputDirectory.lastPathComponent)"
+            if result.freedBytes > 0 { summary += "，释放 \(freedMB) MB" }
+            if result.skippedCount > 0 { summary += "（跳过 \(result.skippedCount) 张）" }
+            return summary
         }
     }
 
@@ -2238,6 +2333,8 @@ private extension PendingImportPrompt {
         switch self {
         case .importSource:
             return "import_source"
+        case .sdCardImport:
+            return "sd_card_import"
         case .resumeSession:
             return "resume_session"
         }
