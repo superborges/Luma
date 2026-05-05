@@ -9,3 +9,5 @@ DerivedData/
 # Cursor MCP may contain API keys — keep local only
 .cursor/mcp.json
 Artifacts/
+# E2E 回归测试本地路径（不提交；用 e2e-regression.local.example.sh 为模板）
+scripts/e2e-regression.local.sh

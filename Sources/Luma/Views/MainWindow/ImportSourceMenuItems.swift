@@ -25,10 +25,9 @@ struct ImportSourceMenuItems: View {
         }
         .disabled(!store.hasConnectedSDCard)
         Button {
-            // 调试用仅张数：仍把菜单与模态错开一帧（见 `scheduleImportAfterMenuTeardown` 注释）。
             scheduleImportAfterMenuTeardown { await $0.presentPhotosImportPicker() }
         } label: {
-            Label("Mac · 照片（仅张数·调试）", systemImage: "photo.on.rectangle.angled")
+            Label("Mac · 照片", systemImage: "photo.on.rectangle.angled")
         }
         // iPhone USB：未连接 / 未解锁时禁用，提示文案改成"插入并解锁 iPhone"。
         Button {

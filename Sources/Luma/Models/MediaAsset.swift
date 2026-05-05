@@ -23,6 +23,16 @@ struct MediaAsset: Identifiable, Codable, Hashable {
         previewURL ?? rawURL ?? thumbnailURL
     }
 
+    /// 磁盘上真实存在的图片路径（预览 → 原图 → 缩略图）。
+    /// 与 `primaryDisplayURL` 不同：若 manifest 里 `previewURL` 已占位但文件尚未写入或已丢失，会回退到已存在的缩略图/原图，避免解码与归档整批失败。
+    var existingImageFileURL: URL? {
+        let fm = FileManager.default
+        if let u = previewURL, fm.fileExists(atPath: u.path) { return u }
+        if let u = rawURL, fm.fileExists(atPath: u.path) { return u }
+        if let u = thumbnailURL, fm.fileExists(atPath: u.path) { return u }
+        return nil
+    }
+
     var dimensionsDescription: String {
         "\(metadata.imageWidth) × \(metadata.imageHeight)"
     }
@@ -176,7 +186,7 @@ enum AssetIssue: String, Codable, Hashable, CaseIterable, Identifiable {
         case .underexposed:
             return "欠曝"
         case .eyesClosed:
-            return "闭眼"
+            return "面部异常"
         case .unsupportedFormat:
             return "不支持"
         }

@@ -54,18 +54,18 @@ final class RealFolderIntegrationTests: XCTestCase {
             XCTAssertEqual(exportResult.exportedCount, pickedCount)
 
             let archiveCandidates = assets.filter { $0.userDecision != .picked }
+            let shrunkDir = context.exportRoot.appendingPathComponent("缩小保留", isDirectory: true)
             let archiveResult = try await archiver.shrinkKeep(
                 assets: archiveCandidates,
-                batchName: context.importURL.lastPathComponent
+                outputDirectory: shrunkDir
             )
 
             let expectedShrinkKeepCount = archiveCandidates.filter { asset in
                 guard let sourceURL = asset.previewURL ?? asset.rawURL else { return false }
                 return EXIFParser.makeThumbnail(from: sourceURL, maxPixelSize: 2048) != nil
             }.count
-            XCTAssertEqual(archiveResult.generatedFiles.count, expectedShrinkKeepCount)
-            let archiveManifestURL = archiveResult.outputDirectory.appendingPathComponent("archive_manifest.json")
-            XCTAssertTrue(FileManager.default.fileExists(atPath: archiveManifestURL.path))
+            XCTAssertEqual(archiveResult.photoCount, expectedShrinkKeepCount)
+            XCTAssertEqual(archiveResult.outputURL, shrunkDir)
 
             let exportedFiles = try FileManager.default.subpathsOfDirectory(atPath: context.exportRoot.path)
             let exportedMediaFiles = exportedFiles.filter { exportedMediaExtensions.contains(URL(fileURLWithPath: $0).pathExtension.lowercased()) }
@@ -77,7 +77,7 @@ final class RealFolderIntegrationTests: XCTestCase {
             print("REAL_FOLDER_IMPORT_COUNT=\(imported.manifest.assets.count)")
             print("REAL_FOLDER_GROUP_COUNT=\(imported.manifest.groups.count)")
             print("REAL_FOLDER_PICKED_COUNT=\(pickedCount)")
-            print("REAL_FOLDER_ARCHIVE_COUNT=\(archiveResult.generatedFiles.count)")
+            print("REAL_FOLDER_ARCHIVE_COUNT=\(archiveResult.photoCount)")
         }
     }
 
@@ -95,7 +95,10 @@ final class RealFolderIntegrationTests: XCTestCase {
             XCTAssertEqual(imported.manifest.assets.count, context.expectedImportCount)
             XCTAssertFalse(imported.manifest.groups.isEmpty)
 
-            let assetsByID = Dictionary(uniqueKeysWithValues: imported.manifest.assets.map { ($0.id, $0) })
+            let assetsByID = Dictionary(
+                imported.manifest.assets.map { ($0.id, $0) },
+                uniquingKeysWith: { _, new in new }
+            )
             let preservedPerGroup = 3
             var preservedIDs = Set<UUID>()
             for group in imported.manifest.groups {
@@ -133,36 +136,37 @@ final class RealFolderIntegrationTests: XCTestCase {
             }
             XCTAssertFalse(expectedVideoGroups.isEmpty)
 
+            let candidates = archivedAssets.filter { $0.userDecision != .picked }
+            let videoOutputURL = context.exportRoot.appendingPathComponent("real_folder_archive.mp4")
             let archiveResult = try await archiver.archive(
-                groups: imported.manifest.groups,
-                assets: archivedAssets,
-                batchName: "\(context.importURL.lastPathComponent)-video"
+                assets: candidates,
+                title: context.importURL.lastPathComponent,
+                outputURL: videoOutputURL
             )
 
-            XCTAssertEqual(archiveResult.generatedFiles.count, expectedVideoGroups.count)
-            XCTAssertTrue(archiveResult.generatedFiles.allSatisfy { $0.pathExtension.lowercased() == "mp4" })
-            XCTAssertTrue(archiveResult.generatedFiles.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
-
-            let archiveManifestURL = archiveResult.outputDirectory.appendingPathComponent("archive_manifest.json")
-            XCTAssertTrue(FileManager.default.fileExists(atPath: archiveManifestURL.path))
-
-            let manifestData = try Data(contentsOf: archiveManifestURL)
-            let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
-            let videos = manifestJSON?["videos"] as? [[String: Any]]
-            XCTAssertEqual(videos?.count, expectedVideoGroups.count)
+            XCTAssertNotNil(archiveResult.outputURL)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: videoOutputURL.path))
+            XCTAssertTrue(archiveResult.photoCount > 0)
 
             print("REAL_FOLDER_VIDEO_RUN_ROOT=\(context.runRoot.path)")
             print("REAL_FOLDER_VIDEO_IMPORT_COUNT=\(imported.manifest.assets.count)")
             print("REAL_FOLDER_VIDEO_GROUP_COUNT=\(imported.manifest.groups.count)")
-            print("REAL_FOLDER_VIDEO_ARCHIVE_GROUP_COUNT=\(expectedVideoGroups.count)")
-            print("REAL_FOLDER_VIDEO_FILE_COUNT=\(archiveResult.generatedFiles.count)")
+            print("REAL_FOLDER_VIDEO_PHOTO_COUNT=\(archiveResult.photoCount)")
         }
     }
 
     private func makeContext(prefix: String) throws -> RealFolderContext {
-        guard let rawImportPath = ProcessInfo.processInfo.environment["LUMA_REAL_IMPORT_PATH"],
-              !rawImportPath.isEmpty else {
-            throw XCTSkip("Set LUMA_REAL_IMPORT_PATH to run the real-folder integration test.")
+        let env = ProcessInfo.processInfo.environment
+        let rawImportPath: String? = {
+            for key in ["LUMA_V1_CONTRACT", "LUMA_REAL_IMPORT_PATH"] {
+                if let v = env[key], !v.isEmpty { return v }
+            }
+            return nil
+        }()
+        guard let rawImportPath else {
+            throw XCTSkip(
+                "Set LUMA_V1_CONTRACT (V1 合约目录) 或 LUMA_REAL_IMPORT_PATH 为真实素材目录以跑本组集成测试。"
+            )
         }
 
         let importURL = URL(fileURLWithPath: rawImportPath, isDirectory: true)

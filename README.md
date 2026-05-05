@@ -30,5 +30,4 @@ swift test
 - `Sources/Luma/`：应用与测试目标源码  
 - `docs/raw/`：原始需求  
 - `docs/MVP/`：与实现对齐的 PRD/流程说明  
-- `scripts/run-luma.sh`：构建、打包 `Luma.app`、ad-hoc 签名并启动  
-- `v2-mothball/`：暂不接入主目标的实验代码（如云端 AI 相关）
+- `scripts/run-luma.sh`：构建、打包 `Luma.app`、ad-hoc 签名并启动

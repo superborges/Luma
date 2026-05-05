@@ -175,8 +175,9 @@ final class ProjectStoreTests: XCTestCase {
 
         XCTAssertEqual(summary.total, 4)
         XCTAssertEqual(summary.picked, 1)
-        XCTAssertEqual(summary.rejected, 2)
-        XCTAssertEqual(summary.pending, 1)
+        // Only explicit userDecision == .rejected counts; technicalReject (issues but no user decision) stays pending
+        XCTAssertEqual(summary.rejected, 1)
+        XCTAssertEqual(summary.pending, 2)
         XCTAssertEqual(summary.recommended, 1)
     }
 

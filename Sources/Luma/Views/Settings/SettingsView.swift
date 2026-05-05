@@ -1,4 +1,26 @@
+import AppKit
 import SwiftUI
+
+/// 设置窗口"浮在最前"配置器。
+///
+/// 设计取舍：
+/// - 通过 NSViewRepresentable 拿到 NSWindow，设 level = `.floating`
+/// - `.floating` 仅相对本进程其他窗口浮起；切到其他 App 不会盖住其他 App 的窗口
+/// - hidesOnDeactivate = true 让用户切走再切回时窗口自然回到 stack 顶部
+private struct SettingsWindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            window.level = .floating
+            window.collectionBehavior.insert(.fullScreenAuxiliary)
+            window.hidesOnDeactivate = true
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
 
 struct SettingsView: View {
     @Bindable var store: ProjectStore
@@ -13,11 +35,17 @@ struct SettingsView: View {
                 .tabItem { Label("通用", systemImage: "gearshape") }
             exportDefaultsTab
                 .tabItem { Label("导出默认值", systemImage: "square.and.arrow.up") }
+            AIModelsSettingsView(store: store)
+                .tabItem { Label("AI 模型", systemImage: "sparkles") }
             developerTab
                 .tabItem { Label("开发", systemImage: "wrench.and.screwdriver") }
         }
         .padding()
-        .frame(width: 620, height: 460)
+        .frame(width: 720, height: 560)
+        // macOS 默认 Settings 窗口是普通 window level，会被主窗口遮挡。
+        // 拿到 NSWindow 后把 level 提到 floating——使其始终浮在 Luma 自己的其他窗口之上，
+        // 但用户切到其他 App（如浏览器复制 API Key）时不会挡到那些 App（floating 仅相对本进程）。
+        .background(SettingsWindowConfigurator())
     }
 
     private var generalTab: some View {
@@ -33,6 +61,36 @@ struct SettingsView: View {
                     store.openProjectLibrary()
                 }
                 .stitchHoverDimming()
+            }
+
+            Section("选片参数") {
+                Picker("分组时间阈值", selection: Binding(
+                    get: { store.groupingTimeThresholdMinutes },
+                    set: { store.groupingTimeThresholdMinutes = $0 }
+                )) {
+                    Text("15 分钟 — 密集拍摄").tag(15)
+                    Text("30 分钟（默认）").tag(30)
+                    Text("60 分钟 — 大跨度").tag(60)
+                    Text("120 分钟 — 宽松").tag(120)
+                }
+                Text("修改后对下一次导入生效，已有 Session 不受影响。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("缓存") {
+                Stepper(
+                    "缩略图缓存上限：\(store.thumbnailCacheLimit)",
+                    value: Binding(
+                        get: { store.thumbnailCacheLimit },
+                        set: { store.thumbnailCacheLimit = $0 }
+                    ),
+                    in: 100...2000,
+                    step: 100
+                )
+                Text("立即生效。值越大占内存越多，缩略图加载越快。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -59,6 +117,20 @@ struct SettingsView: View {
                     store.saveDefaultsExplicitly()
                 }
                 Text("下次新建 Session、点击「导出」时会自动套用上面这两条路径作为默认值。可在导出面板里覆盖。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("默认文件命名") {
+                Picker("命名规则", selection: Binding(
+                    get: { store.defaultFileNamingRule },
+                    set: { store.defaultFileNamingRule = $0 }
+                )) {
+                    Text("保留原名").tag(FileNamingRule.original)
+                    Text("日期前缀").tag(FileNamingRule.datePrefix)
+                    Text("自定义模板").tag(FileNamingRule.custom)
+                }
+                Text("新建导出时自动套用此规则。可在导出面板覆盖。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -102,6 +174,8 @@ struct SettingsView: View {
                 Text("Luma 不会自动上传任何 trace；「导入面包屑」在相册导入各阶段同步追加，若崩溃可据此看最后一行；请与 Trace 一并打包发给开发者。")
                     .font(.caption)
             }
+
+            // "照片导入"调试开关已移除：v2 月份选择器不再需要简化回退路径。
         }
         .formStyle(.grouped)
     }

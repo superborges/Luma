@@ -12,6 +12,7 @@ enum ExportPhase: String {
     case fetchingOriginals // 仅 Photos 源 → Folder/LR 路径
     case writing           // 调用 destination adapter.export 中
     case cleaning          // Photos App 路径下，处理删除/清理
+    case archiving         // 归档未选照片（视频 / 缩小 / 丢弃）
     case finalizing
 }
 
@@ -63,7 +64,9 @@ struct BurstDisplayGroup: Identifiable {
            let bestAsset = assets.first(where: { $0.id == bestAssetID }) {
             return bestAsset
         }
-        return assets.first!
+        // `visibleBurstGroups` 在构造时已 `compactMap` 掉空组；若仍为空说明不变式被破坏。
+        precondition(!assets.isEmpty, "BurstDisplayGroup.assets must be non-empty")
+        return assets[0]
     }
 
     var count: Int {
@@ -86,7 +89,7 @@ private struct BurstSelectionCacheKey: Equatable {
 @MainActor
 @Observable
 final class ProjectStore {
-    private let importManager = ImportManager()
+    private let importManager: ImportManager
     private let importSourceMonitor = ImportSourceMonitor()
     private let logger = Logger(subsystem: "Luma", category: "ProjectStore")
     private let localMLScorer = LocalMLScorer()
@@ -105,6 +108,57 @@ final class ProjectStore {
     /// 首页 Session 列表排序键。默认按上次修改。持久化到 UserDefaults。
     var sessionListSort: SessionListSort = .lastModified
     private let sessionListSortDefaultsKey = "Luma.sessionListSort"
+    private let groupingTimeThresholdKey = "Luma.groupingTimeThreshold"
+    private let thumbnailCacheLimitKey = "Luma.thumbnailCacheLimit"
+    private let defaultFileNamingRuleKey = "Luma.defaultFileNamingRule"
+    /// V2: 用户偏好的评分策略 + 预算阈值。Brief C 的 UI 直接 binding 到 `scoringStrategy` / `scoringBudgetThreshold`。
+    static let scoringStrategyDefaultsKey = "Luma.scoringStrategy"
+    static let scoringBudgetThresholdDefaultsKey = "Luma.scoringBudgetThresholdUSD"
+
+    // MARK: - V2 cloud scoring runtime state
+
+    /// 全应用共享的 ModelConfigStore（UserDefaults + Keychain）。
+    /// 设置页、Coordinator、修图建议路径全部走同一实例，避免 Keychain service 名不一致。
+    /// `var` 仅为测试可注入；生产路径**不应**修改。
+    @ObservationIgnored
+    var modelConfigStore: ModelConfigStore = KeychainModelConfigStore()
+
+    /// 懒加载的协调器，与 ProjectStore 同生命周期。由扩展中的 `ensureCloudScoringCoordinator` 创建。
+    var cloudScoringCoordinator: CloudScoringCoordinator?
+    var cloudScoringStatus: ScoringStatus = .idle
+    var cloudScoringProgress: ScoringProgressEvent?
+    var currentBudgetSnapshot: BudgetSnapshot?
+    var cloudScoringErrorMessage: String?
+
+    // MARK: - V2 single-photo edit suggestion state
+
+    /// 单张修图建议请求状态：`assetID -> EditSuggestionsRequestStatus`。
+    /// UI 监听本字典决定按钮 spinner / 错误回执 / 卡片显示。
+    var editSuggestionsRequestStatus: [UUID: EditSuggestionsRequestStatus] = [:]
+    /// 用户偏好的评分策略。改值时自动同步到 UserDefaults；同时让 `@Observable` 触发 UI 刷新。
+    var scoringStrategy: ScoringStrategy = {
+        let raw = UserDefaults.standard.string(forKey: ProjectStore.scoringStrategyDefaultsKey) ?? ScoringStrategy.balanced.rawValue
+        return ScoringStrategy(rawValue: raw) ?? .balanced
+    }() {
+        didSet {
+            guard scoringStrategy != oldValue else { return }
+            UserDefaults.standard.set(scoringStrategy.rawValue, forKey: ProjectStore.scoringStrategyDefaultsKey)
+        }
+    }
+    /// 单批次预算阈值。同上，setter 自动持久化。
+    var scoringBudgetThreshold: Double = {
+        let saved = UserDefaults.standard.double(forKey: ProjectStore.scoringBudgetThresholdDefaultsKey)
+        return saved > 0 ? saved : 5.0
+    }() {
+        didSet {
+            guard scoringBudgetThreshold != oldValue, scoringBudgetThreshold > 0 else { return }
+            UserDefaults.standard.set(scoringBudgetThreshold, forKey: ProjectStore.scoringBudgetThresholdDefaultsKey)
+        }
+    }
+    /// 阈值预警弹窗触发标记。UI 订阅；用户处理后置 false。
+    var budgetExceededAlertVisible: Bool = false
+    var scoringProgressTask: Task<Void, Never>?
+    // useSimplifiedPhotosPickerKey removed in v2 month-based picker refactor
     // 历史字段：var photosImportPickerPlan: PhotosImportPlan?
     // 已移除——picker 现在用 AppKit NSAlert 实现，不再走 SwiftUI sheet。
     // 见 AppKitPhotosImportPicker。SwiftUI sheet 在该 SDK 组合下无法稳定承载该 picker。
@@ -195,10 +249,13 @@ final class ProjectStore {
     var isPerformanceDiagnosticsPresented = false
     var isExportPanelPresented = false
     var isExporting = false
+    /// 每次 G 键调用 `toggleViewMode()` 时递增，View 层 onChange 驱动 `burstFocusOverride` 翻转。
+    var viewModeToggleTick: Int = 0
     var lastExportSummary: String?
     /// 最近一次导出的结构化结果。导出完成后由 `performExport` 设置；
     /// `ContentView` 据此 sheet 弹出 `ExportSummaryView`。
     var lastExportResult: ExportResult?
+    var lastArchiveVideoCount: Int = 0
     /// 实时导出进度，主要给"下载原图 N/M / 写入相册 / 清理"等阶段提供进度条。
     var exportProgress: ExportProgress?
     /// Photos App 路径写入前的二次确认弹窗状态。`true` = 弹窗显示中。
@@ -227,6 +284,15 @@ final class ProjectStore {
 
     init(enableImportMonitoring: Bool = true) {
         self.enableImportMonitoring = enableImportMonitoring
+
+        var engine = GroupingEngine()
+        let minutes = UserDefaults.standard.integer(forKey: "Luma.groupingTimeThreshold")
+        if minutes > 0 { engine.timeThreshold = TimeInterval(minutes * 60) }
+        self.importManager = ImportManager(groupingEngine: engine)
+
+        let cacheLimit = UserDefaults.standard.integer(forKey: "Luma.thumbnailCacheLimit")
+        if cacheLimit > 0 { ThumbnailCache.shared.updateCountLimit(cacheLimit) }
+
         loadExportSettings()
         if let raw = UserDefaults.standard.string(forKey: sessionListSortDefaultsKey),
            let sort = SessionListSort(rawValue: raw) {
@@ -441,11 +507,34 @@ final class ProjectStore {
     }
 
     var canExportPicked: Bool {
-        pickedAssetsCount > 0
+        pickedAssetsCount > 0 && isExportDestinationReady
+    }
+
+    var isExportDestinationReady: Bool {
+        switch exportOptions.destination {
+        case .folder:
+            return exportOptions.outputPath != nil
+        case .lightroom:
+            return exportOptions.lrAutoImportFolder != nil
+        case .photosApp:
+            return true
+        }
     }
 
     var archiveCandidatesCount: Int {
         assets.filter { $0.userDecision != .picked }.count
+    }
+
+    var archiveCandidates: [MediaAsset] {
+        assets.filter { $0.userDecision != .picked }
+    }
+
+    var archiveEstimatedOutputSize: Int64 {
+        VideoArchiver.estimateArchiveSize(assets: archiveCandidates, handling: exportOptions.rejectedHandling)
+    }
+
+    var archiveEstimatedFreedSpace: Int64 {
+        VideoArchiver.estimateFreedSpace(assets: archiveCandidates, handling: exportOptions.rejectedHandling)
     }
 
     /// 当前 session 是否存在源 = 照片 App 的资产。用于决定是否显示「清理源相册」面板。
@@ -574,9 +663,8 @@ final class ProjectStore {
         }
     }
 
-    /// 「Mac · 照片 App」— **调试用极简路径**（仅选张数）：
-    /// 授权 → 单个 NSAlert（下拉选 N）→ 直接导入；无完整 picker、无 `PhotosImportPlanner.estimate`、无第二段确认。
-    /// 全时间范围、`dedupe` 关闭，减少 PhotoKit/模态/回调面，便于对照崩溃（见 `AppKitPhotosCountOnlyPicker`）。
+    /// 「Mac · 照片 App」— 月份选择导入。
+    /// 授权 → 后台扫描月份统计（timeout 防御）→ 月份网格选择 → 导入。
     func presentPhotosImportPicker() async {
         guard !isImporting else {
             traceEvent("photos_import_skipped_busy", category: "import", metadata: [:])
@@ -584,7 +672,7 @@ final class ProjectStore {
             return
         }
         let flowID = UUID().uuidString
-        ImportPathBreadcrumb.mark("photos_import_flow_start", ["flow_id": flowID, "mode": "count_only"])
+        ImportPathBreadcrumb.mark("photos_import_flow_start", ["flow_id": flowID, "mode": "month_picker"])
         let authorized = await ensurePhotosLibraryAuthorization()
         guard authorized else {
             ImportPathBreadcrumb.mark("photos_import_auth_denied", ["flow_id": flowID])
@@ -592,41 +680,59 @@ final class ProjectStore {
             traceEvent(
                 "photos_import_picker_aborted_no_permission",
                 category: "import",
-                metadata: [
-                    "guidance": photosAccessGuidance?.rawValue ?? "nil"
-                ]
+                metadata: ["guidance": photosAccessGuidance?.rawValue ?? "nil"]
             )
             return
         }
         ImportPathBreadcrumb.mark("photos_import_auth_ok", ["flow_id": flowID])
 
-        ImportPathBreadcrumb.mark("photos_count_only_modal_before", ["flow_id": flowID])
-        guard let limit = AppKitPhotosCountOnlyPicker.presentBlocking() else {
-            ImportPathBreadcrumb.mark("photos_picker_cancelled", ["flow_id": flowID, "mode": "count_only"])
-            traceEvent("photos_import_picker_outcome_cancelled", category: "import", metadata: ["mode": "count_only"])
+        let existingLocalIDs: Set<String> = Set(assets.compactMap { asset in
+            if case .photosLibrary(let id) = asset.source { return id }
+            return nil
+        })
+
+        var importedByMonth: [String: Int] = [:]
+        let calendar = Calendar.current
+        for asset in assets {
+            guard case .photosLibrary = asset.source else { continue }
+            let comps = calendar.dateComponents([.year, .month], from: asset.metadata.captureDate)
+            if let y = comps.year, let m = comps.month {
+                importedByMonth["\(y)-\(m)", default: 0] += 1
+            }
+        }
+
+        let capturedByMonth = importedByMonth
+        let stats = await PhotoKitSafetyWrapper.withTimeout(15.0, fallback: [PhotosImportPlanner.MonthStats]()) {
+            await PhotosImportPlanner.monthlyStats(previouslyImportedByMonth: capturedByMonth)
+        }
+
+        ImportPathBreadcrumb.mark("photos_monthly_stats_ready", [
+            "flow_id": flowID,
+            "month_count": String(stats.count),
+            "timeout": stats.isEmpty ? "maybe" : "no"
+        ])
+
+        let outcome = AppKitPhotosImportPicker.presentBlocking(monthlyStats: stats)
+        guard case .confirmed(let plan) = outcome else {
+            ImportPathBreadcrumb.mark("photos_picker_cancelled", ["flow_id": flowID, "mode": "month_picker"])
             return
         }
 
-        let plan = PhotosImportPlan(
-            id: UUID(),
-            datePreset: .allTime,
-            smartAlbum: nil,
-            userAlbumLocalIdentifier: nil,
-            userAlbumTitle: nil,
-            mediaTypeFilter: .all,
-            limit: limit,
-            dedupeAgainstCurrentProject: false
-        )
-        ImportPathBreadcrumb.mark("photos_count_only_confirmed", ["flow_id": flowID, "plan_id": plan.id.uuidString, "limit": String(limit)])
+        ImportPathBreadcrumb.mark("photos_month_picker_confirmed", [
+            "flow_id": flowID, "plan_id": plan.id.uuidString,
+            "months": String(plan.selectedMonths.count),
+            "media_filter": plan.mediaTypeFilter.rawValue
+        ])
         traceEvent(
-            "photos_import_count_only",
+            "photos_import_month_picker",
             category: "import",
             metadata: [
                 "plan_id": plan.id.uuidString,
-                "limit": String(limit)
+                "months": String(plan.selectedMonths.count),
+                "media_filter": plan.mediaTypeFilter.rawValue
             ]
         )
-        await confirmPhotosImport(plan, excludedLocalIdentifiers: [])
+        await confirmPhotosImport(plan, excludedLocalIdentifiers: existingLocalIDs)
     }
 
     /// 以 `readWrite` 级为准；若系统只给「仅添加」而读图库仍为拒绝，会提示与「无权限」不同的说明。
@@ -714,10 +820,7 @@ final class ProjectStore {
             category: "import",
             metadata: [
                 "source": "photos_library",
-                "limit": String(plan.limit),
-                "date_preset": plan.datePreset.label,
-                "smart_album": plan.smartAlbumSubtype.map { String($0.rawValue) } ?? "none",
-                "user_album": plan.userAlbumLocalIdentifier ?? "none",
+                "months": String(plan.selectedMonths.count),
                 "media": plan.mediaTypeFilter.rawValue,
                 "excluded": String(excludedLocalIdentifiers.count)
             ]
@@ -941,6 +1044,12 @@ final class ProjectStore {
         switch prompt {
         case .importSource(let source):
             await importDetectedSource(source)
+        case .sdCardImport(let source, let info):
+            guard info.photoCount > 0 else {
+                presentNextImportPromptIfPossible()
+                return
+            }
+            await importDetectedSource(source)
         case .resumeSession(let session):
             await continueImport(session)
         }
@@ -1049,6 +1158,26 @@ final class ProjectStore {
         moveSelection(by: 1)
     }
 
+    func toggleViewMode() {
+        viewModeToggleTick += 1
+    }
+
+    func acceptBurstRecommendation(for context: BurstSelectionContext) {
+        guard let bestID = context.burst.bestAssetID else { return }
+        for asset in context.burst.assets {
+            updateDecision(for: asset.id, decision: asset.id == bestID ? .picked : .rejected)
+        }
+        RuntimeTrace.event(
+            "burst_recommendation_accepted",
+            category: "culling",
+            metadata: [
+                "burst_id": context.burst.id.uuidString,
+                "best_asset_id": bestID.uuidString,
+                "burst_count": String(context.burst.count)
+            ]
+        )
+    }
+
     func clearSelectionDecision() {
         guard let selectedAssetID else { return }
         updateDecision(for: selectedAssetID, decision: .pending)
@@ -1143,20 +1272,24 @@ final class ProjectStore {
 
     func chooseExportFolder() {
         let panel = NSOpenPanel()
-        panel.title = "Choose Export Folder"
+        panel.title = "选择导出目录"
+        panel.prompt = "选择"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         exportOptions.outputPath = url
     }
 
     func chooseLightroomFolder() {
         let panel = NSOpenPanel()
-        panel.title = "Choose Lightroom Auto-Import Folder"
+        panel.title = "选择 Lightroom 自动导入目录"
+        panel.prompt = "选择"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         exportOptions.lrAutoImportFolder = url
     }
@@ -1175,6 +1308,7 @@ final class ProjectStore {
 
         isExporting = true
         lastExportSummary = nil
+        lastArchiveVideoCount = 0
         exportProgress = ExportProgress(phase: .preparing, completed: 0, total: 0, currentName: nil)
 
         // 写 Photos 路径：弹一次确认，给用户最后一次"我真的要写入照片库"的机会。
@@ -1248,7 +1382,13 @@ final class ProjectStore {
 
             exportProgress = ExportProgress(phase: .writing, completed: 0, total: pickedAssets.count, currentName: nil)
             let result = try await adapter.export(assets: assets, groups: groups, options: exportOptions)
-            let archiveSummary = try await processRejectedAssetsAfterExport()
+            var archiveSummary: String?
+            do {
+                archiveSummary = try await processRejectedAssetsAfterExport()
+            } catch {
+                logger.error("Archive after export failed (non-fatal): \(error.localizedDescription, privacy: .public)")
+                archiveSummary = "未选照片归档失败：\(error.localizedDescription)"
+            }
             saveExportSettings()
             isExportPanelPresented = false
 
@@ -1326,10 +1466,12 @@ final class ProjectStore {
         continuation?.resume(returning: accepted)
     }
 
+
     /// 关闭导出完成摘要 sheet。
     func dismissExportResult() {
         lastExportResult = nil
         lastExportSummary = nil
+        lastArchiveVideoCount = 0
     }
 
     /// 仅重试失败项：把上次失败的 assetID 写到 `onlyAssetIDs`，重新打开导出面板让用户复用上次配置。
@@ -1463,21 +1605,33 @@ final class ProjectStore {
         }
     }
 
+    private let diskArbitrationMonitor = DiskArbitrationMonitor()
+
     private func startImportSourceMonitoring() {
         guard !isImportMonitoringStarted else { return }
         isImportMonitoringStarted = true
 
-        importSourceMonitor.start { [weak self] source in
+        let onDetected: @Sendable (ImportSourceDescriptor) -> Void = { [weak self] source in
             Task { @MainActor in
                 self?.handleDetectedImportSource(source)
             }
         }
-        // 周期刷新 detectedImportSources，让"iPhone 已连接"等菜单状态可视化。
-        Task { @MainActor [weak self] in
-            while let self {
-                self.detectedImportSources = await ImportSourceMonitor.detectSources()
-                try? await Task.sleep(for: .seconds(5))
+
+        importSourceMonitor.start(onDetected: onDetected)
+
+        // 唯一的 DiskArbitration session：SD 卡插拔事件同时驱动
+        // 1. importSourceMonitor 新设备检测（弹窗）
+        // 2. detectedImportSources 菜单状态刷新
+        diskArbitrationMonitor.start { [weak self] _ in
+            Task { @MainActor in
+                self?.importSourceMonitor.triggerPoll(onDetected: onDetected)
+                self?.detectedImportSources = await ImportSourceMonitor.detectSources()
             }
+        }
+
+        // 启动时立即刷新一次
+        Task { @MainActor [weak self] in
+            self?.detectedImportSources = await ImportSourceMonitor.detectSources()
         }
     }
 
@@ -1527,6 +1681,18 @@ final class ProjectStore {
 
         if let recoverableImportSession, recoverableImportSession.source.stableID == source.stableID {
             enqueueImportPrompt(.resumeSession(recoverableImportSession))
+            return
+        }
+
+        if case .sdCard(let volumePath, _) = source {
+            Task.detached(priority: .userInitiated) { [weak self] in
+                let adapter = SDCardAdapter(volumeURL: URL(filePath: volumePath))
+                let summary = adapter.quickSummary()
+                let scanInfo = SDCardScanInfo(summary: summary)
+                Task { @MainActor in
+                    self?.enqueueImportPrompt(.sdCardImport(source, scanInfo))
+                }
+            }
             return
         }
 
@@ -1653,7 +1819,7 @@ final class ProjectStore {
             let existingIDs = Set(snapshotGroups.map(\.id))
             let refreshedIDs = Set(refreshedGroups.map(\.id))
             guard existingIDs == refreshedIDs else { return }
-            let nameLookup = Dictionary(uniqueKeysWithValues: refreshedGroups.map { ($0.id, $0.name) })
+            let nameLookup = Dictionary(refreshedGroups.map { ($0.id, $0.name) }, uniquingKeysWith: { _, new in new })
             var updatedGroups = self.groups
             var changed = false
             for index in updatedGroups.indices {
@@ -1758,6 +1924,13 @@ final class ProjectStore {
         invalidateSelectionDerivedState()
     }
 
+    /// Internal 版本：供 extension（如 V2 云端评分 / 修图建议）在直接修改深层路径
+    /// （`sessions[i].assets[j].aiScore = ...`）后主动失效 derived state 缓存。
+    /// 直接 setter 路径已经走 `invalidateDerivedState()`；本方法只是把 private 桥接出来。
+    func invalidateAllCachesAfterDirectMutation() {
+        invalidateDerivedState()
+    }
+
     private func invalidateSelectionDerivedState() {
         visibleAssetsCacheGroupID = nil
         visibleAssetsCache = []
@@ -1771,8 +1944,8 @@ final class ProjectStore {
         guard derivedStateIsDirty else { return }
         let startedAt = ProcessInfo.processInfo.systemUptime
 
-        assetLookupCache = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
-        groupLookupCache = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
+        assetLookupCache = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        groupLookupCache = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
         overallSummaryCache = computeSummary(for: assets)
         groupSummaryCache = groups.reduce(into: [:]) { cache, group in
             cache[group.id] = computeSummary(for: group.assets.compactMap { assetLookupCache[$0] })
@@ -1798,7 +1971,7 @@ final class ProjectStore {
         for asset in assets {
             if asset.userDecision == .picked {
                 picked += 1
-            } else if asset.userDecision == .rejected || asset.isTechnicallyRejected {
+            } else if asset.userDecision == .rejected {
                 rejected += 1
             }
 
@@ -1895,7 +2068,7 @@ final class ProjectStore {
     }
 
     private func refreshGroupRecommendations() {
-        let assetLookup = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        let assetLookup = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
 
         for groupIndex in groups.indices {
             let groupAssets = groups[groupIndex].assets.compactMap { assetLookup[$0] }
@@ -1945,6 +2118,48 @@ final class ProjectStore {
         }
     }
 
+    // MARK: - V1 Settings (UserDefaults)
+
+    var groupingTimeThresholdMinutes: Int {
+        get {
+            let v = UserDefaults.standard.integer(forKey: groupingTimeThresholdKey)
+            return v > 0 ? v : 30
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: groupingTimeThresholdKey)
+            traceEvent("settings_grouping_threshold_changed", category: "settings",
+                       metadata: ["minutes": String(newValue)])
+        }
+    }
+
+    var thumbnailCacheLimit: Int {
+        get {
+            let v = UserDefaults.standard.integer(forKey: thumbnailCacheLimitKey)
+            return v > 0 ? v : 800
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: thumbnailCacheLimitKey)
+            ThumbnailCache.shared.updateCountLimit(newValue)
+            traceEvent("settings_thumbnail_cache_limit_changed", category: "settings",
+                       metadata: ["limit": String(newValue)])
+        }
+    }
+
+    var defaultFileNamingRule: FileNamingRule {
+        get {
+            if let raw = UserDefaults.standard.string(forKey: defaultFileNamingRuleKey),
+               let rule = FileNamingRule(rawValue: raw) {
+                return rule
+            }
+            return .original
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: defaultFileNamingRuleKey)
+            traceEvent("settings_default_naming_rule_changed", category: "settings",
+                       metadata: ["rule": newValue.rawValue])
+        }
+    }
+
     private func exportAdapter(for destination: ExportDestination) throws -> any ExportDestinationAdapter {
         switch destination {
         case .folder:
@@ -1960,17 +2175,85 @@ final class ProjectStore {
         let archiveCandidates = assets.filter { $0.userDecision != .picked }
         guard !archiveCandidates.isEmpty else { return nil }
 
+        exportProgress = ExportProgress(phase: .archiving, completed: 0, total: archiveCandidates.count, currentName: nil)
+
+        let progressHandler: @Sendable (ArchiveProgress) -> Void = { [weak self] progress in
+            Task { @MainActor in
+                self?.exportProgress = ExportProgress(
+                    phase: .archiving,
+                    completed: progress.completed,
+                    total: progress.total,
+                    currentName: progress.currentName
+                )
+            }
+        }
+
         switch exportOptions.rejectedHandling {
         case .discard:
-            return "未选 \(archiveCandidates.count) 张未处理"
+            let discardResult = await videoArchiver.discard(assets: archiveCandidates, onProgress: progressHandler)
+            let discardedIDs = Set(archiveCandidates.map(\.id))
+            if let idx = activeSessionIndex {
+                sessions[idx].assets.removeAll { discardedIDs.contains($0.id) }
+                for gi in sessions[idx].groups.indices.reversed() {
+                    sessions[idx].groups[gi].assets.removeAll { discardedIDs.contains($0) }
+                    sessions[idx].groups[gi].recommendedAssets.removeAll { discardedIDs.contains($0) }
+                    for si in sessions[idx].groups[gi].subGroups.indices.reversed() {
+                        sessions[idx].groups[gi].subGroups[si].assets.removeAll { discardedIDs.contains($0) }
+                        if let best = sessions[idx].groups[gi].subGroups[si].bestAsset, discardedIDs.contains(best) {
+                            sessions[idx].groups[gi].subGroups[si].bestAsset = sessions[idx].groups[gi].subGroups[si].assets.first
+                        }
+                    }
+                    sessions[idx].groups[gi].subGroups.removeAll { $0.assets.isEmpty }
+                    if sessions[idx].groups[gi].assets.isEmpty {
+                        sessions[idx].groups.remove(at: gi)
+                    }
+                }
+                sessions[idx].updatedAt = .now
+                invalidateDerivedState()
+                scheduleManifestSave()
+            }
+            let freedMB = discardResult.freedBytes / 1_048_576
+            return "已删除 \(discardResult.deletedCount) 个文件，释放 \(freedMB) MB"
         case .archiveVideo:
-            let batchName = "\(projectName)_\(ISO8601DateFormatter().string(from: .now))"
-            let result = try await videoArchiver.archive(groups: groups, assets: archiveCandidates, batchName: batchName)
-            return "生成 \(result.generatedFiles.count) 个归档视频到 \(result.outputDirectory.lastPathComponent)"
+            let exportDir = exportOptions.destination == .lightroom
+                ? exportOptions.lrAutoImportFolder
+                : exportOptions.outputPath
+            guard let exportDir else {
+                return "未选择导出目录，跳过归档视频"
+            }
+            let videoName = "\(AppDirectories.sanitizePathComponent(projectName))_归档.mp4"
+            let outputURL = exportDir.appendingPathComponent(videoName)
+            let result = try await videoArchiver.archive(
+                assets: archiveCandidates,
+                title: projectName,
+                outputURL: outputURL,
+                onProgress: progressHandler
+            )
+
+            lastArchiveVideoCount = result.outputURL != nil ? 1 : 0
+
+            var summary: String
+            if result.outputURL != nil {
+                summary = "已将 \(result.photoCount) 张未选照片合并为归档视频"
+                if result.skippedCount > 0 { summary += "（\(result.skippedCount) 张无图源跳过）" }
+            } else {
+                summary = "未生成归档视频（无可渲染图源）"
+            }
+            return summary
         case .shrinkKeep:
-            let batchName = "\(projectName)_\(ISO8601DateFormatter().string(from: .now))"
-            let result = try await videoArchiver.shrinkKeep(assets: archiveCandidates, batchName: batchName)
-            return "缩小归档 \(result.generatedFiles.count) 张到 \(result.outputDirectory.lastPathComponent)"
+            let exportDir = exportOptions.destination == .lightroom
+                ? exportOptions.lrAutoImportFolder
+                : exportOptions.outputPath
+            guard let exportDir else {
+                return "未选择导出目录，跳过缩小保留"
+            }
+            let shrunkDir = exportDir.appendingPathComponent("缩小保留", isDirectory: true)
+            let result = try await videoArchiver.shrinkKeep(assets: archiveCandidates, outputDirectory: shrunkDir, onProgress: progressHandler)
+            let freedMB = result.freedBytes / 1_048_576
+            var summary = "缩小保留 \(result.photoCount) 张到导出目录"
+            if result.freedBytes > 0 { summary += "，释放 \(freedMB) MB" }
+            if result.skippedCount > 0 { summary += "（跳过 \(result.skippedCount) 张）" }
+            return summary
         }
     }
 
@@ -2070,6 +2353,8 @@ private extension PendingImportPrompt {
         switch self {
         case .importSource:
             return "import_source"
+        case .sdCardImport:
+            return "sd_card_import"
         case .resumeSession:
             return "resume_session"
         }

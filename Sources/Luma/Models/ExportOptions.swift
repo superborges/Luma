@@ -11,6 +11,8 @@ struct ExportOptions: Codable, Hashable {
     var writeEditSuggestionsToXmp: Bool
     var folderTemplate: FolderTemplate
     var outputPath: URL?
+    var fileNamingRule: FileNamingRule
+    var customNamingTemplate: String
     var rejectedHandling: RejectedHandling
     /// 仅对 `.photosApp` 目的地生效；源 = 照片 App 时决定是否回删未选原图。
     var photosCleanupStrategy: PhotosCleanupStrategy
@@ -31,6 +33,8 @@ struct ExportOptions: Codable, Hashable {
         writeEditSuggestionsToXmp: false,
         folderTemplate: .byDate,
         outputPath: nil,
+        fileNamingRule: .original,
+        customNamingTemplate: "{date}_{original}",
         rejectedHandling: .archiveVideo,
         photosCleanupStrategy: .keepOriginals,
         photosCleanupDryRun: false
@@ -47,6 +51,8 @@ struct ExportOptions: Codable, Hashable {
         case writeEditSuggestionsToXmp
         case folderTemplate
         case outputPath
+        case fileNamingRule
+        case customNamingTemplate
         case rejectedHandling
         case photosCleanupStrategy
         case photosCleanupDryRun
@@ -63,6 +69,8 @@ struct ExportOptions: Codable, Hashable {
         writeEditSuggestionsToXmp: Bool,
         folderTemplate: FolderTemplate,
         outputPath: URL?,
+        fileNamingRule: FileNamingRule = .original,
+        customNamingTemplate: String = "{date}_{original}",
         rejectedHandling: RejectedHandling,
         photosCleanupStrategy: PhotosCleanupStrategy = .keepOriginals,
         photosCleanupDryRun: Bool = false
@@ -77,6 +85,8 @@ struct ExportOptions: Codable, Hashable {
         self.writeEditSuggestionsToXmp = writeEditSuggestionsToXmp
         self.folderTemplate = folderTemplate
         self.outputPath = outputPath
+        self.fileNamingRule = fileNamingRule
+        self.customNamingTemplate = customNamingTemplate
         self.rejectedHandling = rejectedHandling
         self.photosCleanupStrategy = photosCleanupStrategy
         self.photosCleanupDryRun = photosCleanupDryRun
@@ -95,6 +105,8 @@ struct ExportOptions: Codable, Hashable {
         writeEditSuggestionsToXmp = try container.decode(Bool.self, forKey: .writeEditSuggestionsToXmp)
         folderTemplate = try container.decode(FolderTemplate.self, forKey: .folderTemplate)
         outputPath = try container.decodeIfPresent(URL.self, forKey: .outputPath)
+        fileNamingRule = try container.decodeIfPresent(FileNamingRule.self, forKey: .fileNamingRule) ?? .original
+        customNamingTemplate = try container.decodeIfPresent(String.self, forKey: .customNamingTemplate) ?? "{date}_{original}"
         rejectedHandling = try container.decode(RejectedHandling.self, forKey: .rejectedHandling)
         photosCleanupStrategy = try container.decodeIfPresent(PhotosCleanupStrategy.self, forKey: .photosCleanupStrategy) ?? .keepOriginals
         photosCleanupDryRun = try container.decodeIfPresent(Bool.self, forKey: .photosCleanupDryRun) ?? false
@@ -122,6 +134,14 @@ enum RejectedHandling: String, Codable, Hashable, CaseIterable, Identifiable {
     case archiveVideo
     case shrinkKeep
     case discard
+
+    var id: String { rawValue }
+}
+
+enum FileNamingRule: String, Codable, Hashable, CaseIterable, Identifiable {
+    case original
+    case datePrefix
+    case custom
 
     var id: String { rawValue }
 }

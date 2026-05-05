@@ -38,9 +38,10 @@ struct PhotosAppExporter: ExportDestinationAdapter {
             throw authorizationError(for: authorizationStatus)
         }
 
-        let groupLookup = Dictionary(uniqueKeysWithValues: groups.flatMap { group in
-            group.assets.map { ($0, group.id) }
-        })
+        let groupLookup = Dictionary(
+            groups.flatMap { group in group.assets.map { ($0, group.id) } },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         // iCloud 闭环关键：source = .photosLibrary 的资产已在系统照片库里，按 localIdentifier 直接引用，
         // 避免 PHAssetCreationRequest 重复入库导致照片库里出现两份相同照片。

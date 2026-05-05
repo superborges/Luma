@@ -16,6 +16,7 @@ struct LightroomExporter: ExportDestinationAdapter {
 
         var folderOptions = options
         folderOptions.outputPath = outputFolder
+        // Lightroom 始终需要 XMP sidecar（评分、标签、修图建议都通过 XMP 传递）。
         folderOptions.writeXmpSidecar = true
         return try await FolderExporter().export(assets: assets, groups: groups, options: folderOptions)
     }

@@ -64,6 +64,12 @@ enum AppDirectories {
         projectDirectory.appendingPathComponent("manifest.json")
     }
 
+    /// V2 云端评分任务持久化文件，与 manifest 同目录。仅在评分中存在；
+    /// 任务完成后由 ScoringJobStore.clear 删除，避免与 manifest 状态发生不一致。
+    static func scoringJobURL(in projectDirectory: URL) -> URL {
+        projectDirectory.appendingPathComponent("scoring_job.json")
+    }
+
     static func archivesRoot() throws -> URL {
         let root = try applicationSupportRoot().appendingPathComponent("archives", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

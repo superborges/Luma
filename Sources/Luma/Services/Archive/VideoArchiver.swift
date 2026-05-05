@@ -8,51 +8,174 @@ import ImageIO
 import UniformTypeIdentifiers
 
 struct ArchiveResult: Codable, Hashable {
-    let outputDirectory: URL
-    let generatedFiles: [URL]
+    let outputURL: URL?
+    let photoCount: Int
+    let skippedCount: Int
+    let freedBytes: Int64
+}
+
+struct ArchiveProgress: Sendable {
+    let completed: Int
+    let total: Int
+    let currentName: String
 }
 
 struct VideoArchiver {
-    func archive(groups: [PhotoGroup], assets: [MediaAsset], batchName: String) async throws -> ArchiveResult {
-        try await Task.detached(priority: .userInitiated) {
-            try archiveSync(groups: groups, assets: assets, batchName: batchName)
+
+    // MARK: - Archive Video
+
+    /// 将所有未选照片合并为一个回忆视频，直接写到 `outputURL`。
+    func archive(
+        assets: [MediaAsset],
+        title: String,
+        outputURL: URL,
+        onProgress: (@Sendable (ArchiveProgress) -> Void)? = nil
+    ) async throws -> ArchiveResult {
+        try await Task.detached(priority: .utility) {
+            try self.archiveSync(assets: assets, title: title, outputURL: outputURL, onProgress: onProgress)
         }.value
     }
 
-    func shrinkKeep(assets: [MediaAsset], batchName: String) async throws -> ArchiveResult {
-        let destinationRoot = try AppDirectories.archiveBatchDirectory(named: batchName)
-        let shrunkRoot = destinationRoot.appendingPathComponent("shrunk", isDirectory: true)
-        try FileManager.default.createDirectory(at: shrunkRoot, withIntermediateDirectories: true)
+    // MARK: - Shrink & Keep
 
-        var generatedFiles: [URL] = []
-        var manifestEntries: [ArchiveManifestEntry] = []
+    /// 将未选照片缩小后直接写到 `outputDirectory`。
+    func shrinkKeep(
+        assets: [MediaAsset],
+        outputDirectory: URL,
+        onProgress: (@Sendable (ArchiveProgress) -> Void)? = nil
+    ) async throws -> ArchiveResult {
+        try await Task.detached(priority: .utility) {
+            try self.shrinkKeepSync(assets: assets, outputDirectory: outputDirectory, onProgress: onProgress)
+        }.value
+    }
 
-        for asset in assets {
-            guard let sourceURL = asset.previewURL ?? asset.rawURL else { continue }
-            guard let image = EXIFParser.makeThumbnail(from: sourceURL, maxPixelSize: 2048) else { continue }
+    private func shrinkKeepSync(
+        assets: [MediaAsset],
+        outputDirectory: URL,
+        onProgress: (@Sendable (ArchiveProgress) -> Void)?
+    ) throws -> ArchiveResult {
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+
+        var photoCount = 0
+        var skippedCount = 0
+        var freedBytes: Int64 = 0
+
+        for (index, asset) in assets.enumerated() {
+            onProgress?(ArchiveProgress(completed: index, total: assets.count, currentName: asset.baseName))
+
+            guard let sourceURL = asset.existingImageFileURL else {
+                skippedCount += 1
+                continue
+            }
+            guard let image = EXIFParser.makeThumbnail(from: sourceURL, maxPixelSize: 2048) else {
+                skippedCount += 1
+                continue
+            }
 
             let fileName = "\(AppDirectories.sanitizePathComponent(asset.baseName)).jpg"
-            let destinationURL = shrunkRoot.appendingPathComponent(fileName)
-            try writeJPEG(image: image, to: destinationURL, metadataFrom: sourceURL)
-            generatedFiles.append(destinationURL)
+            let destinationURL = outputDirectory.appendingPathComponent(fileName)
 
-            manifestEntries.append(
-                ArchiveManifestEntry(
-                    originalFileName: sourceURL.lastPathComponent,
-                    outputFileName: destinationURL.lastPathComponent,
-                    captureDate: asset.metadata.captureDate,
-                    aiScore: asset.aiScore?.overall,
-                    archiveMethod: "shrinkKeep"
-                )
-            )
+            do {
+                try writeJPEG(image: image, to: destinationURL, metadataFrom: sourceURL)
+                photoCount += 1
+
+                if let rawURL = asset.rawURL,
+                   rawURL != sourceURL,
+                   FileManager.default.fileExists(atPath: rawURL.path) {
+                    let rawSize = (try? rawURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+                    do {
+                        try FileManager.default.removeItem(at: rawURL)
+                        freedBytes += rawSize
+                    } catch {
+                        // RAW deletion is best-effort
+                    }
+                }
+            } catch {
+                skippedCount += 1
+            }
         }
 
-        let manifest = ArchiveManifest(batchName: batchName, videos: [], entries: manifestEntries)
-        let data = try JSONEncoder.lumaEncoder.encode(manifest)
-        try data.write(to: destinationRoot.appendingPathComponent("archive_manifest.json"), options: [.atomic])
-
-        return ArchiveResult(outputDirectory: destinationRoot, generatedFiles: generatedFiles)
+        return ArchiveResult(outputURL: outputDirectory, photoCount: photoCount, skippedCount: skippedCount, freedBytes: freedBytes)
     }
+
+    // MARK: - Discard
+
+    func discard(assets: [MediaAsset], onProgress: (@Sendable (ArchiveProgress) -> Void)? = nil) async -> (deletedCount: Int, freedBytes: Int64) {
+        await Task.detached(priority: .utility) {
+            Self.discardSync(assets: assets, onProgress: onProgress)
+        }.value
+    }
+
+    private static func discardSync(assets: [MediaAsset], onProgress: (@Sendable (ArchiveProgress) -> Void)?) -> (deletedCount: Int, freedBytes: Int64) {
+        var deletedCount = 0
+        var freedBytes: Int64 = 0
+        let fm = FileManager.default
+
+        for (index, asset) in assets.enumerated() {
+            onProgress?(ArchiveProgress(completed: index, total: assets.count, currentName: asset.baseName))
+
+            for url in [asset.previewURL, asset.rawURL, asset.thumbnailURL].compactMap({ $0 }) {
+                guard fm.fileExists(atPath: url.path) else { continue }
+                let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+                do {
+                    try fm.removeItem(at: url)
+                    freedBytes += size
+                    deletedCount += 1
+                } catch {
+                    // best-effort deletion
+                }
+            }
+        }
+
+        return (deletedCount, freedBytes)
+    }
+
+    // MARK: - Disk Space Estimation
+
+    static func estimateArchiveSize(assets: [MediaAsset], handling: RejectedHandling) -> Int64 {
+        switch handling {
+        case .discard:
+            return 0
+        case .shrinkKeep:
+            return Int64(assets.count) * 800_000
+        case .archiveVideo:
+            let totalSeconds = Double(assets.count) * 1.5 + 1.0
+            return Int64(totalSeconds * 1_000_000)
+        }
+    }
+
+    static func estimateFreedSpace(assets: [MediaAsset], handling: RejectedHandling) -> Int64 {
+        switch handling {
+        case .discard:
+            return totalFileSize(of: assets)
+        case .shrinkKeep:
+            var freed: Int64 = 0
+            for asset in assets {
+                if let rawURL = asset.rawURL, asset.previewURL != nil {
+                    freed += fileSize(rawURL)
+                }
+            }
+            return freed
+        case .archiveVideo:
+            return 0
+        }
+    }
+
+    private static func totalFileSize(of assets: [MediaAsset]) -> Int64 {
+        var total: Int64 = 0
+        for asset in assets {
+            for url in [asset.previewURL, asset.rawURL, asset.thumbnailURL].compactMap({ $0 }) {
+                total += fileSize(url)
+            }
+        }
+        return total
+    }
+
+    private static func fileSize(_ url: URL) -> Int64 {
+        (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+    }
+
+    // MARK: - Private: JPEG Writing
 
     private func writeJPEG(image: CGImage, to url: URL, metadataFrom sourceURL: URL) throws {
         let data = NSMutableData()
@@ -79,46 +202,88 @@ struct VideoArchiver {
         try data.write(to: url, options: [.atomic])
     }
 
-    private func archiveSync(groups: [PhotoGroup], assets: [MediaAsset], batchName: String) throws -> ArchiveResult {
-        let destinationRoot = try AppDirectories.archiveBatchDirectory(named: batchName)
-        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
-        var generatedFiles: [URL] = []
-        var videoEntries: [ArchiveVideoEntry] = []
+    // MARK: - Private: Archive Video Sync
 
-        for (groupIndex, group) in groups.enumerated() {
-            let groupAssets = group.assets
-                .compactMap { assetsByID[$0] }
-                .filter { $0.userDecision != .picked && $0.primaryDisplayURL != nil }
-                .sorted { $0.metadata.captureDate < $1.metadata.captureDate }
+    private func archiveSync(
+        assets: [MediaAsset],
+        title: String,
+        outputURL: URL,
+        onProgress: (@Sendable (ArchiveProgress) -> Void)?
+    ) throws -> ArchiveResult {
+        let sorted = assets
+            .filter { $0.existingImageFileURL != nil }
+            .sorted { $0.metadata.captureDate < $1.metadata.captureDate }
 
-            guard !groupAssets.isEmpty else { continue }
-
-            let fileName = String(
-                format: "%02d_%@_archive.mp4",
-                groupIndex + 1,
-                AppDirectories.sanitizePathComponent(group.name)
-            )
-            let outputURL = destinationRoot.appendingPathComponent(fileName)
-            if FileManager.default.fileExists(atPath: outputURL.path) {
-                try FileManager.default.removeItem(at: outputURL)
-            }
-
-            let entry = try createVideo(for: group, assets: groupAssets, outputURL: outputURL)
-            generatedFiles.append(outputURL)
-            videoEntries.append(entry)
+        let skippedCount = assets.count - sorted.count
+        guard !sorted.isEmpty else {
+            return ArchiveResult(outputURL: nil, photoCount: 0, skippedCount: skippedCount, freedBytes: 0)
         }
 
-        let manifest = ArchiveManifest(batchName: batchName, videos: videoEntries, entries: [])
-        let manifestData = try JSONEncoder.lumaEncoder.encode(manifest)
-        try manifestData.write(to: destinationRoot.appendingPathComponent("archive_manifest.json"), options: [.atomic])
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            try FileManager.default.removeItem(at: outputURL)
+        }
 
-        return ArchiveResult(outputDirectory: destinationRoot, generatedFiles: generatedFiles)
+        try createVideo(assets: sorted, title: title, outputURL: outputURL, onProgress: onProgress)
+        return ArchiveResult(outputURL: outputURL, photoCount: sorted.count, skippedCount: skippedCount, freedBytes: 0)
     }
 
-    private func createVideo(for group: PhotoGroup, assets: [MediaAsset], outputURL: URL) throws -> ArchiveVideoEntry {
-        let renderer = ArchiveVideoRenderer()
+    /// 依次尝试 HEVC、H.264，避免部分环境 `canAdd` 失败导致整批归档无视频。
+    private func makeArchiveVideoWritingPipeline(
+        outputURL: URL,
+        videoSize: CGSize,
+        fps: Int32
+    ) throws -> (
+        writer: AVAssetWriter,
+        writerInput: AVAssetWriterInput,
+        adaptor: AVAssetWriterInputPixelBufferAdaptor
+    ) {
+        let codecs: [AVVideoCodecType] = [.hevc, .h264]
+        for codec in codecs {
+            if FileManager.default.fileExists(atPath: outputURL.path) {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+            let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+            let bitRate = codec == .hevc ? 8_000_000 : 12_000_000
+            let videoSettings: [String: Any] = [
+                AVVideoCodecKey: codec,
+                AVVideoWidthKey: videoSize.width,
+                AVVideoHeightKey: videoSize.height,
+                AVVideoCompressionPropertiesKey: [
+                    AVVideoAverageBitRateKey: bitRate,
+                    AVVideoExpectedSourceFrameRateKey: fps,
+                ],
+            ]
+            let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+            writerInput.expectsMediaDataInRealTime = false
+            let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+                assetWriterInput: writerInput,
+                sourcePixelBufferAttributes: [
+                    kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+                    kCVPixelBufferWidthKey as String: Int(videoSize.width),
+                    kCVPixelBufferHeightKey as String: Int(videoSize.height),
+                ]
+            )
+            guard writer.canAdd(writerInput) else {
+                writer.cancelWriting()
+                continue
+            }
+            writer.add(writerInput)
+            return (writer, writerInput, adaptor)
+        }
+        throw LumaError.unsupported("当前环境不支持归档视频编码（已尝试 HEVC 与 H.264）。")
+    }
+
+    // MARK: - Private: Video Creation
+
+    private func createVideo(
+        assets: [MediaAsset],
+        title: String,
+        outputURL: URL,
+        onProgress: (@Sendable (ArchiveProgress) -> Void)?
+    ) throws {
+        var renderer = ArchiveVideoRenderer()
         let renderAssets = assets.compactMap { asset -> RenderAsset? in
-            guard let sourceURL = asset.primaryDisplayURL else { return nil }
+            guard let sourceURL = asset.existingImageFileURL else { return nil }
             guard let cgImage = EXIFParser.makeThumbnail(from: sourceURL, maxPixelSize: 2200) else { return nil }
             return RenderAsset(asset: asset, image: CIImage(cgImage: cgImage), motion: MotionStyle(seed: asset.id.uuidString))
         }
@@ -137,41 +302,27 @@ struct VideoArchiver {
         let transitionFrames = Int(transitionDuration * Double(fps))
         let totalFrames = titleFrames + renderAssets.count * framesPerPhoto
 
-        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-        let videoSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.hevc,
-            AVVideoWidthKey: videoSize.width,
-            AVVideoHeightKey: videoSize.height,
-            AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 8_000_000,
-                AVVideoExpectedSourceFrameRateKey: fps,
-            ],
-        ]
-
-        let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
-        writerInput.expectsMediaDataInRealTime = false
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
-            assetWriterInput: writerInput,
-            sourcePixelBufferAttributes: [
-                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
-                kCVPixelBufferWidthKey as String: Int(videoSize.width),
-                kCVPixelBufferHeightKey as String: Int(videoSize.height),
-            ]
+        let (writer, writerInput, adaptor) = try makeArchiveVideoWritingPipeline(
+            outputURL: outputURL,
+            videoSize: videoSize,
+            fps: fps
         )
 
-        guard writer.canAdd(writerInput) else {
-            throw LumaError.persistenceFailed("Unable to configure archive video writer.")
-        }
-        writer.add(writerInput)
-
-        let titleCard = renderer.makeTitleCard(for: group, size: videoSize)
+        let titleCard = renderer.makeTitleCard(title: title, size: videoSize)
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "zh_Hans")
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .short
 
         for frameIndex in 0..<totalFrames {
             while !writerInput.isReadyForMoreMediaData {
                 Thread.sleep(forTimeInterval: 0.001)
             }
+
+            onProgress?(ArchiveProgress(completed: frameIndex, total: totalFrames, currentName: title))
 
             let image: CIImage
             if frameIndex < titleFrames {
@@ -182,12 +333,31 @@ struct VideoArchiver {
                 let frameInAsset = localFrame % framesPerPhoto
                 let current = renderAssets[assetIndex]
                 let currentProgress = Double(frameInAsset) / Double(max(framesPerPhoto - 1, 1))
-                let currentFrame = renderer.renderFrame(for: current, progress: currentProgress, canvasSize: videoSize)
+                var currentFrame = renderer.renderFrame(for: current, progress: currentProgress, canvasSize: videoSize)
+
+                let location = current.asset.metadata.gpsCoordinate
+                    .map { String(format: "%.4f, %.4f", $0.latitude, $0.longitude) }
+                currentFrame = renderer.overlayBottomBar(
+                    on: currentFrame,
+                    groupName: title,
+                    date: dateFormatter.string(from: current.asset.metadata.captureDate),
+                    location: location,
+                    canvasSize: videoSize
+                )
 
                 if assetIndex < renderAssets.count - 1, frameInAsset >= framesPerPhoto - transitionFrames {
                     let next = renderAssets[assetIndex + 1]
                     let transitionProgress = Double(frameInAsset - (framesPerPhoto - transitionFrames)) / Double(max(transitionFrames - 1, 1))
-                    let nextFrame = renderer.renderFrame(for: next, progress: transitionProgress, canvasSize: videoSize)
+                    var nextFrame = renderer.renderFrame(for: next, progress: transitionProgress, canvasSize: videoSize)
+                    let nextLocation = next.asset.metadata.gpsCoordinate
+                        .map { String(format: "%.4f, %.4f", $0.latitude, $0.longitude) }
+                    nextFrame = renderer.overlayBottomBar(
+                        on: nextFrame,
+                        groupName: title,
+                        date: dateFormatter.string(from: next.asset.metadata.captureDate),
+                        location: nextLocation,
+                        canvasSize: videoSize
+                    )
                     image = renderer.dissolve(from: currentFrame, to: nextFrame, progress: transitionProgress, canvasSize: videoSize)
                 } else {
                     image = currentFrame
@@ -210,59 +380,10 @@ struct VideoArchiver {
         if writer.status != .completed {
             throw writer.error ?? LumaError.persistenceFailed("Failed to finalize archive video.")
         }
-
-        let fileSize = (try? outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
-        let items = renderAssets.enumerated().map { index, renderAsset in
-            ArchiveVideoItem(
-                originalFileName: renderAsset.sourceFileName,
-                captureDate: renderAsset.asset.metadata.captureDate,
-                aiScore: renderAsset.asset.aiScore?.overall,
-                startTime: titleDuration + (Double(index) * secondsPerPhoto),
-                endTime: titleDuration + (Double(index + 1) * secondsPerPhoto)
-            )
-        }
-
-        return ArchiveVideoEntry(
-            fileName: outputURL.lastPathComponent,
-            groupName: group.name,
-            photoCount: renderAssets.count,
-            duration: Double(totalFrames) / Double(fps),
-            fileSize: fileSize,
-            items: items
-        )
     }
 }
 
-private struct ArchiveManifest: Codable, Hashable {
-    let batchName: String
-    let videos: [ArchiveVideoEntry]
-    let entries: [ArchiveManifestEntry]
-}
-
-private struct ArchiveManifestEntry: Codable, Hashable {
-    let originalFileName: String
-    let outputFileName: String
-    let captureDate: Date
-    let aiScore: Int?
-    let archiveMethod: String
-}
-
-private struct ArchiveVideoEntry: Codable, Hashable {
-    let fileName: String
-    let groupName: String
-    let photoCount: Int
-    let duration: Double
-    let fileSize: Int64
-    let items: [ArchiveVideoItem]
-}
-
-private struct ArchiveVideoItem: Codable, Hashable {
-    let originalFileName: String
-    let captureDate: Date
-    let aiScore: Int?
-    let startTime: Double
-    let endTime: Double
-}
+// MARK: - Render Types
 
 private struct RenderAsset {
     let asset: MediaAsset
@@ -270,7 +391,7 @@ private struct RenderAsset {
     let motion: MotionStyle
 
     var sourceFileName: String {
-        asset.primaryDisplayURL?.lastPathComponent ?? asset.baseName
+        asset.existingImageFileURL?.lastPathComponent ?? asset.baseName
     }
 }
 
@@ -295,9 +416,11 @@ private enum MotionStyle {
     }
 }
 
+// MARK: - Video Renderer
+
 private struct ArchiveVideoRenderer {
     private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
-    private let canvasRect = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+    private var barCache: [String: CIImage] = [:]
 
     func renderFrame(for renderAsset: RenderAsset, progress: Double, canvasSize: CGSize) -> CIImage {
         let foregroundRect = CGRect(origin: .zero, size: canvasSize).insetBy(dx: 50, dy: 50)
@@ -317,6 +440,58 @@ private struct ArchiveVideoRenderer {
         return animatedForeground
             .composited(over: background)
             .cropped(to: CGRect(origin: .zero, size: canvasSize))
+    }
+
+    mutating func overlayBottomBar(on image: CIImage, groupName: String, date: String, location: String?, canvasSize: CGSize) -> CIImage {
+        var parts = [groupName, date]
+        if let loc = location { parts.append(loc) }
+        let cacheKey = parts.joined(separator: "\u{0}")
+
+        let barCI: CIImage
+        if let cached = barCache[cacheKey] {
+            barCI = cached
+        } else if let rendered = renderBarImage(text: parts.joined(separator: "  ·  "), canvasWidth: canvasSize.width) {
+            barCache[cacheKey] = rendered
+            barCI = rendered
+        } else {
+            return image
+        }
+        return barCI.composited(over: image).cropped(to: CGRect(origin: .zero, size: canvasSize))
+    }
+
+    private func renderBarImage(text: String, canvasWidth: CGFloat) -> CIImage? {
+        let barHeight: CGFloat = 56
+        let barRect = CGRect(x: 0, y: 0, width: canvasWidth, height: barHeight)
+        let width = Int(canvasWidth)
+        let height = Int(barHeight)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        guard let ctx = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+
+        ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0.45))
+        ctx.fill(barRect)
+
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: CGFloat(height))
+        ctx.scaleBy(x: 1, y: -1)
+
+        let font = CTFontCreateWithName("HelveticaNeue-Medium" as CFString, 18, nil)
+        let textColor = CGColor(red: 1, green: 1, blue: 1, alpha: 0.92)
+        drawText(text, font: font, color: textColor, at: CGPoint(x: 24, y: 18), in: ctx)
+        ctx.restoreGState()
+
+        guard let barImage = ctx.makeImage() else { return nil }
+        return CIImage(cgImage: barImage)
     }
 
     func dissolve(from current: CIImage, to next: CIImage, progress: Double, canvasSize: CGSize) -> CIImage {
@@ -349,7 +524,7 @@ private struct ArchiveVideoRenderer {
         )
     }
 
-    func makeTitleCard(for group: PhotoGroup, size: CGSize) -> CIImage {
+    func makeTitleCard(title: String, size: CGSize) -> CIImage {
         let width = Int(size.width)
         let height = Int(size.height)
         let colorSpace = CGColorSpaceCreateDeviceRGB()
@@ -379,18 +554,7 @@ private struct ArchiveVideoRenderer {
         context.scaleBy(x: 1, y: -1)
 
         let titleFont = CTFontCreateWithName("HelveticaNeue-Bold" as CFString, 84, nil)
-        let subtitleFont = CTFontCreateWithName("HelveticaNeue-Medium" as CFString, 34, nil)
-        drawText(group.name, font: titleFont, color: CGColor.white, at: CGPoint(x: 160, y: 330), in: context)
-
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_Hans")
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        let subtitleParts = [
-            formatter.string(from: group.timeRange.lowerBound),
-            group.location.map { String(format: "%.4f, %.4f", $0.latitude, $0.longitude) }
-        ].compactMap { $0 }
-        drawText(subtitleParts.joined(separator: " · "), font: subtitleFont, color: CGColor(gray: 1, alpha: 0.82), at: CGPoint(x: 160, y: 240), in: context)
+        drawText(title, font: titleFont, color: CGColor.white, at: CGPoint(x: 160, y: 330), in: context)
 
         context.restoreGState()
 

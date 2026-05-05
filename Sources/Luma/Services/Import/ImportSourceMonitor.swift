@@ -19,7 +19,9 @@ final class ImportSourceMonitor {
             let initialSources = await detectSourcesImpl()
             knownSourceIDs = Set(initialSources.map { $0.stableID })
 
-            let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+            // iPhone 等设备用低频轮询（15 秒间隔）。
+            // SD 卡检测由 ProjectStore 的 DiskArbitrationMonitor 事件触发 triggerPoll()。
+            let timer = Timer(timeInterval: 15, repeats: true) { [weak self] _ in
                 Task { @MainActor in
                     self?.poll(onDetected: onDetected)
                 }
@@ -36,10 +38,13 @@ final class ImportSourceMonitor {
         isPolling = false
     }
 
+    /// 由外部（DiskArbitrationMonitor）事件触发的立即检测。
+    func triggerPoll(onDetected: @escaping @Sendable (ImportSourceDescriptor) -> Void) {
+        poll(onDetected: onDetected)
+    }
+
     private func poll(onDetected: @escaping @Sendable (ImportSourceDescriptor) -> Void) {
         guard !isPolling else { return }
-        isPolling = true
-
         Task { [weak self] in
             await self?.performPoll(onDetected: onDetected)
         }

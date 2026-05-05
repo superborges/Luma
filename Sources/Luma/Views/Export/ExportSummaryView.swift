@@ -27,6 +27,9 @@ struct ExportSummaryView: View {
                     if !result.failures.isEmpty {
                         failuresSection
                     }
+                    if store.lastArchiveVideoCount > 0 {
+                        archiveVideoSection
+                    }
                 }
                 .padding(20)
             }
@@ -175,6 +178,24 @@ struct ExportSummaryView: View {
                         .foregroundStyle(.tertiary)
                 }
             }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var archiveVideoSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "film.stack")
+                    .font(.subheadline)
+                    .foregroundStyle(.purple)
+                Text("归档视频")
+                    .font(.subheadline.weight(.semibold))
+            }
+            Text("已将所有未选照片合并为一个回忆视频，保存在导出目录中。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

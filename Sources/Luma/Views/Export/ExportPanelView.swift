@@ -3,6 +3,7 @@ import SwiftUI
 struct ExportPanelView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var store: ProjectStore
+    @State private var showDiscardConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -37,6 +38,7 @@ struct ExportPanelView: View {
                             Text("按场景").tag(FolderTemplate.byGroup)
                             Text("按评分").tag(FolderTemplate.byRating)
                         }
+                        fileNamingSection
                         Toggle("附带 XMP", isOn: $store.exportOptions.writeXmpSidecar)
                         Toggle("写入修图建议", isOn: $store.exportOptions.writeEditSuggestionsToXmp)
                         pathRow(
@@ -46,6 +48,7 @@ struct ExportPanelView: View {
                             store.chooseExportFolder()
                         }
                     case .lightroom:
+                        fileNamingSection
                         Toggle("写入 XMP", isOn: $store.exportOptions.writeXmpSidecar)
                         Toggle("写入修图建议", isOn: $store.exportOptions.writeEditSuggestionsToXmp)
                         pathRow(
@@ -70,10 +73,11 @@ struct ExportPanelView: View {
                     Picker("处理方式", selection: $store.exportOptions.rejectedHandling) {
                         Text("缩小保留").tag(RejectedHandling.shrinkKeep)
                         Text("归档视频").tag(RejectedHandling.archiveVideo)
-                        Text("忽略").tag(RejectedHandling.discard)
+                        Text("丢弃").tag(RejectedHandling.discard)
                     }
                     Text("未选照片：\(store.archiveCandidatesCount) 张")
                         .foregroundStyle(.secondary)
+                    archiveEstimationRow
                 }
 
                 if store.exportOptions.destination == .photosApp, store.hasPhotosLibrarySources {
@@ -86,6 +90,9 @@ struct ExportPanelView: View {
                 }
             }
             .navigationTitle("导出")
+            .onChange(of: store.exportOptions.writeEditSuggestionsToXmp) { _, enabled in
+                if enabled { store.exportOptions.writeXmpSidecar = true }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") {
@@ -97,11 +104,11 @@ struct ExportPanelView: View {
 
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        Task {
-                            await store.performExport()
-                            if !store.isExportPanelPresented {
-                                dismiss()
-                            }
+                        if store.exportOptions.rejectedHandling == .discard,
+                           store.archiveCandidatesCount > 0 {
+                            showDiscardConfirmation = true
+                        } else {
+                            startExport()
                         }
                     } label: {
                         if store.isExporting {
@@ -115,8 +122,54 @@ struct ExportPanelView: View {
                     .stitchHoverDimming()
                 }
             }
+            .alert("确认丢弃未选照片", isPresented: $showDiscardConfirmation) {
+                Button("永久删除", role: .destructive) { startExport() }
+                Button("取消", role: .cancel) { }
+            } message: {
+                Text("将永久删除 \(store.archiveCandidatesCount) 张未选照片及其 RAW 文件。此操作不可恢复。")
+            }
         }
         .frame(minWidth: 560, minHeight: 420)
+    }
+
+    private func startExport() {
+        Task {
+            await store.performExport()
+            if !store.isExportPanelPresented {
+                dismiss()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var fileNamingSection: some View {
+        Picker("文件命名", selection: $store.exportOptions.fileNamingRule) {
+            Text("保留原名").tag(FileNamingRule.original)
+            Text("日期前缀").tag(FileNamingRule.datePrefix)
+            Text("自定义模板").tag(FileNamingRule.custom)
+        }
+        if store.exportOptions.fileNamingRule == .custom {
+            TextField("模板", text: $store.exportOptions.customNamingTemplate)
+            Text("可用变量：{original} {date} {datetime} {group} {seq}")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        if store.exportOptions.fileNamingRule != .original {
+            Text("预览：\(namingPreview)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var namingPreview: String {
+        FileNamingResolver.resolvedFileName(
+            originalName: "IMG_1234.jpg",
+            captureDate: Date(),
+            groupName: "Morning Walk",
+            sequenceInGroup: 1,
+            rule: store.exportOptions.fileNamingRule,
+            template: store.exportOptions.customNamingTemplate
+        )
     }
 
     @ViewBuilder
@@ -156,6 +209,32 @@ struct ExportPanelView: View {
                 Text("原图全部保留，最安全。若需同步清爽手机相册，请切换到上面的「删除未选原图」。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var archiveEstimationRow: some View {
+        let handling = store.exportOptions.rejectedHandling
+        let count = store.archiveCandidatesCount
+        if count > 0 {
+            switch handling {
+            case .shrinkKeep:
+                let freedMB = store.archiveEstimatedFreedSpace / 1_048_576
+                let outputMB = store.archiveEstimatedOutputSize / 1_048_576
+                Text("预计输出 ~\(outputMB) MB JPEG，释放 ~\(freedMB) MB RAW 空间")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .archiveVideo:
+                let outputMB = store.archiveEstimatedOutputSize / 1_048_576
+                Text("预计生成 ~\(outputMB) MB 回忆视频")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .discard:
+                let freedMB = store.archiveEstimatedFreedSpace / 1_048_576
+                Label("将永久删除 \(count) 张照片（~\(freedMB) MB），不可恢复", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
         }
     }

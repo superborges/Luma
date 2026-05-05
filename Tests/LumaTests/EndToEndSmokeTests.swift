@@ -107,26 +107,18 @@ final class EndToEndSmokeTests: XCTestCase {
                 XCTAssertTrue(FileManager.default.fileExists(atPath: exportedImage.path))
                 XCTAssertTrue(FileManager.default.fileExists(atPath: exportedXMP.path))
 
-                let archiveResult = try await archiver.archive(groups: [group], assets: assets, batchName: "Smoke Archive")
-                let archiveManifestURL = archiveResult.outputDirectory.appendingPathComponent("archive_manifest.json")
-                let archiveVideoURL = try XCTUnwrap(archiveResult.generatedFiles.first)
+                let archiveVideoURL = root.appendingPathComponent("smoke_archive.mp4")
+                let rejectedAssets = assets.filter { $0.userDecision != .picked }
+                let archiveResult = try await archiver.archive(
+                    assets: rejectedAssets,
+                    title: "Smoke Archive",
+                    outputURL: archiveVideoURL
+                )
 
-                XCTAssertEqual(archiveResult.generatedFiles.count, 1)
+                XCTAssertNotNil(archiveResult.outputURL)
                 XCTAssertTrue(FileManager.default.fileExists(atPath: archiveVideoURL.path))
                 XCTAssertEqual(archiveVideoURL.pathExtension.lowercased(), "mp4")
-                XCTAssertTrue(FileManager.default.fileExists(atPath: archiveManifestURL.path))
-
-                let manifestData = try Data(contentsOf: archiveManifestURL)
-                let manifestObject = try XCTUnwrap(JSONSerialization.jsonObject(with: manifestData) as? [String: Any])
-                let videos = try XCTUnwrap(manifestObject["videos"] as? [[String: Any]])
-                let firstVideo = try XCTUnwrap(videos.first)
-                let items = try XCTUnwrap(firstVideo["items"] as? [[String: Any]])
-
-                XCTAssertEqual(manifestObject["batchName"] as? String, "Smoke Archive")
-                XCTAssertEqual(videos.count, 1)
-                XCTAssertEqual(firstVideo["groupName"] as? String, group.name)
-                XCTAssertEqual(firstVideo["photoCount"] as? Int, 1)
-                XCTAssertEqual(items.first?["originalFileName"] as? String, assets[secondIndex].previewURL?.lastPathComponent)
+                XCTAssertEqual(archiveResult.photoCount, rejectedAssets.filter { $0.existingImageFileURL != nil }.count)
             }
         }
     }
