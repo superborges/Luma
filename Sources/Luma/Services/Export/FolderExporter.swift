@@ -66,7 +66,8 @@ struct FolderExporter: ExportDestinationAdapter {
                 let destinationURL = FileNamingResolver.uniqueURL(for: candidateURL, in: destinationFolder)
                 try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
 
-                if options.writeXmpSidecar {
+                let shouldWriteXMP = options.writeXmpSidecar || options.writeEditSuggestionsToXmp
+                if shouldWriteXMP {
                     try XMPWriter.writeSidecar(
                         for: asset,
                         group: group,

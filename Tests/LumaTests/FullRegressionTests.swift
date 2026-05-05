@@ -274,31 +274,20 @@ final class FullRegressionTests: XCTestCase {
             }
 
             let archiver = VideoArchiver()
+            let candidates = assets.filter { $0.userDecision != .picked }
+            let outputURL = ctx.exportRoot.appendingPathComponent("e2e_archive.mp4")
             let result = try await archiver.archive(
-                groups: imported.manifest.groups,
-                assets: assets,
-                batchName: "e2e-archive-video"
+                assets: candidates,
+                title: "e2e-archive-video",
+                outputURL: outputURL
             )
 
-            XCTAssertFalse(result.generatedFiles.isEmpty, "应至少生成 1 个 MP4")
-            XCTAssertTrue(result.generatedFiles.allSatisfy {
-                $0.pathExtension.lowercased() == "mp4"
-            })
-            XCTAssertTrue(result.generatedFiles.allSatisfy {
-                FileManager.default.fileExists(atPath: $0.path)
-            })
-
-            let manifestURL = result.outputDirectory.appendingPathComponent("archive_manifest.json")
-            XCTAssertTrue(FileManager.default.fileExists(atPath: manifestURL.path))
-
-            let data = try Data(contentsOf: manifestURL)
-            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-            let videos = try XCTUnwrap(json["videos"] as? [[String: Any]])
-            XCTAssertEqual(videos.count, result.generatedFiles.count)
+            XCTAssertNotNil(result.outputURL, "应生成 1 个 MP4")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: outputURL.path))
+            XCTAssertTrue(result.photoCount > 0)
 
             printSummary("ARCHIVE_VIDEO", [
-                "mp4_count": result.generatedFiles.count,
-                "manifest_ok": true,
+                "photo_count": result.photoCount,
             ])
         }
     }
@@ -310,21 +299,20 @@ final class FullRegressionTests: XCTestCase {
             let candidates = Array(imported.manifest.assets.suffix(10))
 
             let archiver = VideoArchiver()
+            let shrunkDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("LumaE2E-shrink-\(UUID().uuidString)", isDirectory: true)
+            defer { try? FileManager.default.removeItem(at: shrunkDir) }
+
             let result = try await archiver.shrinkKeep(
                 assets: candidates,
-                batchName: "e2e-shrink"
+                outputDirectory: shrunkDir
             )
 
-            XCTAssertFalse(result.generatedFiles.isEmpty, "应生成缩图")
-            XCTAssertTrue(result.generatedFiles.allSatisfy {
-                FileManager.default.fileExists(atPath: $0.path)
-            })
-
-            let manifestURL = result.outputDirectory.appendingPathComponent("archive_manifest.json")
-            XCTAssertTrue(FileManager.default.fileExists(atPath: manifestURL.path))
+            XCTAssertTrue(result.photoCount > 0, "应生成缩图")
+            XCTAssertEqual(result.outputURL, shrunkDir)
 
             printSummary("SHRINK_KEEP", [
-                "shrunk_count": result.generatedFiles.count,
+                "shrunk_count": result.photoCount,
             ])
         }
     }
@@ -431,20 +419,20 @@ final class FullRegressionTests: XCTestCase {
             // 6. Archive (shrinkKeep for non-picked)
             let archiveCandidates = assets.filter { $0.userDecision != .picked }
             let archiver = VideoArchiver()
+            let shrunkDir = exportRoot.appendingPathComponent("缩小保留", isDirectory: true)
             let archiveResult = try await archiver.shrinkKeep(
                 assets: archiveCandidates,
-                batchName: "e2e-full-pipeline"
+                outputDirectory: shrunkDir
             )
 
-            let manifestURL = archiveResult.outputDirectory.appendingPathComponent("archive_manifest.json")
-            XCTAssertTrue(FileManager.default.fileExists(atPath: manifestURL.path))
+            XCTAssertEqual(archiveResult.outputURL, shrunkDir)
 
             printSummary("FULL_PIPELINE", [
                 "imported": imported.manifest.assets.count,
                 "groups": groups.count,
                 "picked": pickedIndices.count,
                 "exported": exportResult.exportedCount,
-                "archived": archiveResult.generatedFiles.count,
+                "archived": archiveResult.photoCount,
             ])
         }
     }

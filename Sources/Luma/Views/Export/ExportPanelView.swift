@@ -3,6 +3,7 @@ import SwiftUI
 struct ExportPanelView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var store: ProjectStore
+    @State private var showDiscardConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -89,6 +90,9 @@ struct ExportPanelView: View {
                 }
             }
             .navigationTitle("导出")
+            .onChange(of: store.exportOptions.writeEditSuggestionsToXmp) { _, enabled in
+                if enabled { store.exportOptions.writeXmpSidecar = true }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") {
@@ -100,11 +104,11 @@ struct ExportPanelView: View {
 
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        Task {
-                            await store.performExport()
-                            if !store.isExportPanelPresented {
-                                dismiss()
-                            }
+                        if store.exportOptions.rejectedHandling == .discard,
+                           store.archiveCandidatesCount > 0 {
+                            showDiscardConfirmation = true
+                        } else {
+                            startExport()
                         }
                     } label: {
                         if store.isExporting {
@@ -118,8 +122,23 @@ struct ExportPanelView: View {
                     .stitchHoverDimming()
                 }
             }
+            .alert("确认丢弃未选照片", isPresented: $showDiscardConfirmation) {
+                Button("永久删除", role: .destructive) { startExport() }
+                Button("取消", role: .cancel) { }
+            } message: {
+                Text("将永久删除 \(store.archiveCandidatesCount) 张未选照片及其 RAW 文件。此操作不可恢复。")
+            }
         }
         .frame(minWidth: 560, minHeight: 420)
+    }
+
+    private func startExport() {
+        Task {
+            await store.performExport()
+            if !store.isExportPanelPresented {
+                dismiss()
+            }
+        }
     }
 
     @ViewBuilder

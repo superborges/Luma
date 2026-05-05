@@ -14,7 +14,7 @@ enum XMPWriter {
         case .rejected: "Red"
         }
 
-        let descriptionText = xmlEscaped(asset.aiScore?.comment ?? "")
+        let descriptionText = xmlEscaped(composedDescription(for: asset, includeEditSuggestions: includeEditSuggestions))
         let subjectKeywords = buildSubjectKeywords(asset: asset, group: group)
         let hierarchicalSubject = group?.name ?? ""
         let adjustments = includeEditSuggestions ? adjustmentFragment(for: asset.editSuggestions) : ""
@@ -95,6 +95,50 @@ enum XMPWriter {
         }
     }
 
+    // MARK: - Description（评分评语 + 修图建议文字）
+
+    /// `dc:description`：始终包含 AI 评分评语；勾选「写入修图建议」时追加 narrative / 风格 / HSL / 局部说明（Lightroom 可读作说明字段）。
+    private static func composedDescription(for asset: MediaAsset, includeEditSuggestions: Bool) -> String {
+        var sections: [String] = []
+        if let score = asset.aiScore {
+            let comment = score.comment.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !comment.isEmpty { sections.append(comment) }
+        }
+        guard includeEditSuggestions, let s = asset.editSuggestions else {
+            return sections.joined(separator: "\n\n")
+        }
+
+        let narr = s.narrative.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !narr.isEmpty {
+            sections.append(narr)
+        }
+
+        if let fs = s.filterStyle {
+            let bits = [fs.primary, fs.reference, fs.mood].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            if !bits.isEmpty {
+                sections.append("风格参考：" + bits.joined(separator: " · "))
+            }
+        }
+
+        if let hsl = s.hslAdjustments, !hsl.isEmpty {
+            let lines = hsl.map { h -> String in
+                var parts: [String] = [h.color]
+                if let hue = h.hue { parts.append("色相 \(hue)") }
+                if let sat = h.saturation { parts.append("饱和 \(sat)") }
+                if let lum = h.luminance { parts.append("明亮 \(lum)") }
+                return parts.joined(separator: " ")
+            }
+            sections.append("HSL 建议：\n" + lines.joined(separator: "\n"))
+        }
+
+        if let locals = s.localEdits, !locals.isEmpty {
+            let lines = locals.map { "\($0.area)：\($0.action)" }
+            sections.append("局部调整：\n" + lines.joined(separator: "\n"))
+        }
+
+        return sections.joined(separator: "\n\n")
+    }
+
     // MARK: - Escaping
 
     private static func xmlEscaped(_ text: String) -> String {
@@ -132,6 +176,15 @@ enum XMPWriter {
             }
             if let vibrance = adjustments.vibrance {
                 fragments.append("<crs:Vibrance>\(vibrance)</crs:Vibrance>")
+            }
+            if let clarity = adjustments.clarity {
+                fragments.append("<crs:Clarity2012>\(clarity)</crs:Clarity2012>")
+            }
+            if let dehaze = adjustments.dehaze {
+                fragments.append("<crs:Dehaze>\(dehaze)</crs:Dehaze>")
+            }
+            if let tint = adjustments.tint {
+                fragments.append("<crs:Tint>\(tint)</crs:Tint>")
             }
         }
 

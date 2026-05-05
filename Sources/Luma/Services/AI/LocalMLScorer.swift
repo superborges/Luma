@@ -15,7 +15,7 @@ struct LocalMLScorer: Sendable {
     private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
     func score(asset: MediaAsset) async -> LocalMLAssessment {
-        guard let sourceURL = asset.previewURL ?? asset.rawURL else {
+        guard let sourceURL = asset.existingImageFileURL else {
             return LocalMLAssessment(
                 issues: [.unsupportedFormat],
                 score: 15,

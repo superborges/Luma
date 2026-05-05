@@ -71,13 +71,6 @@ final class ProjectStoreExportTests: XCTestCase {
             store.exportOptions.writeXmpSidecar = true
             store.exportOptions.rejectedHandling = .discard
 
-            Task { @MainActor in
-                while !store.isAwaitingDiscardConfirmation {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
-                store.resolveDiscardConfirmation(true)
-            }
-
             await store.performExport()
 
             let exportedFolder = outputRoot.appendingPathComponent("Export Group", isDirectory: true)

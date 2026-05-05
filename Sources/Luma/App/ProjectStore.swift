@@ -255,14 +255,12 @@ final class ProjectStore {
     /// 最近一次导出的结构化结果。导出完成后由 `performExport` 设置；
     /// `ContentView` 据此 sheet 弹出 `ExportSummaryView`。
     var lastExportResult: ExportResult?
+    var lastArchiveVideoCount: Int = 0
     /// 实时导出进度，主要给"下载原图 N/M / 写入相册 / 清理"等阶段提供进度条。
     var exportProgress: ExportProgress?
     /// Photos App 路径写入前的二次确认弹窗状态。`true` = 弹窗显示中。
     var isAwaitingPhotosWriteConfirmation: Bool = false
     private var pendingPhotosWriteContinuation: CheckedContinuation<Bool, Never>?
-    /// 丢弃未选照片的二次确认弹窗。
-    var isAwaitingDiscardConfirmation: Bool = false
-    private var pendingDiscardContinuation: CheckedContinuation<Bool, Never>?
 
     private var hasBootstrapped = false
     private var isImportMonitoringStarted = false
@@ -1310,6 +1308,7 @@ final class ProjectStore {
 
         isExporting = true
         lastExportSummary = nil
+        lastArchiveVideoCount = 0
         exportProgress = ExportProgress(phase: .preparing, completed: 0, total: 0, currentName: nil)
 
         // 写 Photos 路径：弹一次确认，给用户最后一次"我真的要写入照片库"的机会。
@@ -1378,17 +1377,6 @@ final class ProjectStore {
                     }
                     sessions[idx].updatedAt = .now
                     invalidateDerivedState()
-                }
-            }
-
-            if exportOptions.rejectedHandling == .discard,
-               assets.contains(where: { $0.userDecision != .picked }) {
-                let discardConfirmed = await requestDiscardConfirmation()
-                if !discardConfirmed {
-                    traceEvent("discard_cancelled_by_user", category: "export")
-                    isExporting = false
-                    exportProgress = nil
-                    return
                 }
             }
 
@@ -1478,27 +1466,12 @@ final class ProjectStore {
         continuation?.resume(returning: accepted)
     }
 
-    @MainActor
-    private func requestDiscardConfirmation() async -> Bool {
-        if isAwaitingDiscardConfirmation { return false }
-        isAwaitingDiscardConfirmation = true
-        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            self.pendingDiscardContinuation = continuation
-        }
-    }
-
-    func resolveDiscardConfirmation(_ accepted: Bool) {
-        guard isAwaitingDiscardConfirmation else { return }
-        isAwaitingDiscardConfirmation = false
-        let continuation = pendingDiscardContinuation
-        pendingDiscardContinuation = nil
-        continuation?.resume(returning: accepted)
-    }
 
     /// 关闭导出完成摘要 sheet。
     func dismissExportResult() {
         lastExportResult = nil
         lastExportSummary = nil
+        lastArchiveVideoCount = 0
     }
 
     /// 仅重试失败项：把上次失败的 assetID 写到 `onlyAssetIDs`，重新打开导出面板让用户复用上次配置。
@@ -2218,19 +2191,66 @@ final class ProjectStore {
         switch exportOptions.rejectedHandling {
         case .discard:
             let discardResult = await videoArchiver.discard(assets: archiveCandidates, onProgress: progressHandler)
+            let discardedIDs = Set(archiveCandidates.map(\.id))
+            if let idx = activeSessionIndex {
+                sessions[idx].assets.removeAll { discardedIDs.contains($0.id) }
+                for gi in sessions[idx].groups.indices.reversed() {
+                    sessions[idx].groups[gi].assets.removeAll { discardedIDs.contains($0) }
+                    sessions[idx].groups[gi].recommendedAssets.removeAll { discardedIDs.contains($0) }
+                    for si in sessions[idx].groups[gi].subGroups.indices.reversed() {
+                        sessions[idx].groups[gi].subGroups[si].assets.removeAll { discardedIDs.contains($0) }
+                        if let best = sessions[idx].groups[gi].subGroups[si].bestAsset, discardedIDs.contains(best) {
+                            sessions[idx].groups[gi].subGroups[si].bestAsset = sessions[idx].groups[gi].subGroups[si].assets.first
+                        }
+                    }
+                    sessions[idx].groups[gi].subGroups.removeAll { $0.assets.isEmpty }
+                    if sessions[idx].groups[gi].assets.isEmpty {
+                        sessions[idx].groups.remove(at: gi)
+                    }
+                }
+                sessions[idx].updatedAt = .now
+                invalidateDerivedState()
+                scheduleManifestSave()
+            }
             let freedMB = discardResult.freedBytes / 1_048_576
             return "已删除 \(discardResult.deletedCount) 个文件，释放 \(freedMB) MB"
         case .archiveVideo:
-            let batchName = "\(projectName)_\(ISO8601DateFormatter().string(from: .now))"
-            let result = try await videoArchiver.archive(groups: groups, assets: archiveCandidates, batchName: batchName, onProgress: progressHandler)
-            var summary = "生成 \(result.generatedFiles.count) 个归档视频到 \(result.outputDirectory.lastPathComponent)"
-            if result.skippedCount > 0 { summary += "（跳过 \(result.skippedCount) 组）" }
+            let exportDir = exportOptions.destination == .lightroom
+                ? exportOptions.lrAutoImportFolder
+                : exportOptions.outputPath
+            guard let exportDir else {
+                return "未选择导出目录，跳过归档视频"
+            }
+            let videoName = "\(AppDirectories.sanitizePathComponent(projectName))_归档.mp4"
+            let outputURL = exportDir.appendingPathComponent(videoName)
+            let result = try await videoArchiver.archive(
+                assets: archiveCandidates,
+                title: projectName,
+                outputURL: outputURL,
+                onProgress: progressHandler
+            )
+
+            lastArchiveVideoCount = result.outputURL != nil ? 1 : 0
+
+            var summary: String
+            if result.outputURL != nil {
+                summary = "已将 \(result.photoCount) 张未选照片合并为归档视频"
+                if result.skippedCount > 0 { summary += "（\(result.skippedCount) 张无图源跳过）" }
+            } else {
+                summary = "未生成归档视频（无可渲染图源）"
+            }
             return summary
         case .shrinkKeep:
-            let batchName = "\(projectName)_\(ISO8601DateFormatter().string(from: .now))"
-            let result = try await videoArchiver.shrinkKeep(assets: archiveCandidates, batchName: batchName, onProgress: progressHandler)
+            let exportDir = exportOptions.destination == .lightroom
+                ? exportOptions.lrAutoImportFolder
+                : exportOptions.outputPath
+            guard let exportDir else {
+                return "未选择导出目录，跳过缩小保留"
+            }
+            let shrunkDir = exportDir.appendingPathComponent("缩小保留", isDirectory: true)
+            let result = try await videoArchiver.shrinkKeep(assets: archiveCandidates, outputDirectory: shrunkDir, onProgress: progressHandler)
             let freedMB = result.freedBytes / 1_048_576
-            var summary = "缩小归档 \(result.generatedFiles.count) 张到 \(result.outputDirectory.lastPathComponent)"
+            var summary = "缩小保留 \(result.photoCount) 张到导出目录"
             if result.freedBytes > 0 { summary += "，释放 \(freedMB) MB" }
             if result.skippedCount > 0 { summary += "（跳过 \(result.skippedCount) 张）" }
             return summary

@@ -65,6 +65,31 @@ final class XMPWriterTests: XCTestCase {
         XCTAssertTrue(xmp.contains("<crs:Temperature>5700</crs:Temperature>"))
         XCTAssertTrue(xmp.contains("<crs:HasCrop>True</crs:HasCrop>"))
         XCTAssertTrue(xmp.contains("<crs:CropAngle>1.2</crs:CropAngle>"))
+        XCTAssertTrue(xmp.contains("Lift and crop."), "修图 narrative 应写入 dc:description")
+    }
+
+    func testXMPEditSuggestionsNarrativeOnlyStillInDescription() {
+        let suggestions = EditSuggestions(
+            crop: CropSuggestion(needed: false, ratio: "3:2", direction: "", rule: "", top: nil, bottom: nil, left: nil, right: nil, angle: nil),
+            filterStyle: nil,
+            adjustments: nil,
+            hslAdjustments: nil,
+            localEdits: nil,
+            narrative: "建议略微提亮前景，压暗天空层次。"
+        )
+        var asset = TestFixtures.makeAsset(
+            baseName: "IMG_NARR",
+            captureDate: TestFixtures.makeDate(hour: 10),
+            aiScore: TestFixtures.makeAIScore(overall: 80, comment: "构图稳健"),
+            userDecision: .picked
+        )
+        asset.editSuggestions = suggestions
+
+        let xmp = XMPWriter.xmp(for: asset, group: nil, includeEditSuggestions: true)
+
+        XCTAssertFalse(xmp.contains("crs:Exposure2012"), "无数值滑块时不应生成 crs 曝光")
+        XCTAssertTrue(xmp.contains("构图稳健"))
+        XCTAssertTrue(xmp.contains("建议略微提亮前景"))
     }
 
     func testXMPUsesRDFBagForSubject() {

@@ -485,6 +485,22 @@ struct ModelDetailEditor: View {
             case .idle:
                 EmptyView()
             }
+
+            HStack {
+                Button {
+                    let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                        .appendingPathComponent("Luma/CalibrationPhotos", isDirectory: true)
+                    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                    NSWorkspace.shared.open(dir)
+                } label: {
+                    Label("打开校准照目录", systemImage: "folder")
+                }
+                .buttonStyle(.borderless)
+
+                Text("放入 20–30 张多样风格照片即可用于校准")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
