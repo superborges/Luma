@@ -14,10 +14,10 @@ private let executorLegacyModeApplied: Bool = {
 struct LumaApp: App {
     @NSApplicationDelegateAdaptor(AppActivationDelegate.self) private var appActivationDelegate
     @State private var store = ProjectStore()
+    @State private var libraryStore: LibraryStore?
+    @State private var migrationManager: V3MigrationManager?
 
     init() {
-        // 确保 legacy executor mode 在任何 actor isolation check 之前就位。
-        // 引用 executorLegacyModeApplied 防止编译器 dead-strip 这个 file-level initializer。
         precondition(executorLegacyModeApplied)
 
         if let configuration = TraceSummaryCLI.requestedConfiguration(from: CommandLine.arguments) {
@@ -53,11 +53,54 @@ struct LumaApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(store: store)
-                .frame(minWidth: 1120, minHeight: 720)
-                .task {
-                    await store.bootstrap()
+            Group {
+                if let libraryStore, let migrationManager {
+                    V4ContentView(libraryStore: libraryStore, migrationManager: migrationManager)
+                } else {
+                    ProgressView("启动中…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(StitchTheme.background)
                 }
+            }
+            .frame(minWidth: 1120, minHeight: 720)
+            .task {
+                if libraryStore == nil {
+                    do {
+                        let db = try LumaDatabase.default()
+                        let assetRepo = GRDBMasterAssetRepository(dbQueue: db.dbQueue)
+                        let expAssetRepo = GRDBExpeditionAssetRepository(dbQueue: db.dbQueue)
+                        let assetMgr = AssetManager(db: db, assetRepo: assetRepo, expeditionAssetRepo: expAssetRepo)
+                        let expRepo = GRDBExpeditionRepository(dbQueue: db.dbQueue)
+                        let expMgr = ExpeditionManager(repo: expRepo)
+                        let sourceMgr = AssetSourceManager(db: db)
+                        let groupRepo = GRDBPhotoGroupRepository(dbQueue: db.dbQueue)
+                        let scoreRepo = GRDBAssetScoreRepository(dbQueue: db.dbQueue)
+                        let importSessionRepo = GRDBImportSessionRepository(dbQueue: db.dbQueue)
+                        libraryStore = LibraryStore(
+                            db: db,
+                            assetManager: assetMgr,
+                            expeditionManager: expMgr,
+                            assetSourceManager: sourceMgr,
+                            photoGroupRepo: groupRepo,
+                            scoreRepo: scoreRepo,
+                            assetRepo: assetRepo,
+                            expeditionAssetRepo: expAssetRepo,
+                            importSessionRepo: importSessionRepo
+                        )
+                        migrationManager = V3MigrationManager(
+                            db: db,
+                            assetSourceManager: sourceMgr,
+                            expeditionManager: expMgr,
+                            assetManager: assetMgr,
+                            photoGroupRepo: groupRepo,
+                            scoreRepo: scoreRepo,
+                            importSessionRepo: importSessionRepo
+                        )
+                    } catch {
+                        fatalError("Failed to initialize database: \(error)")
+                    }
+                }
+            }
         }
         .commands {
             LumaCommands(store: store)

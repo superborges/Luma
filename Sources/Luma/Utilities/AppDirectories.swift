@@ -122,6 +122,36 @@ enum AppDirectories {
         try diagnosticsRoot().appendingPathComponent("import-breadcrumb.jsonl")
     }
 
+    // MARK: - V4 Managed Storage
+
+    static func managedStorageRoot() throws -> URL {
+        let root = try applicationSupportRoot().appendingPathComponent("ManagedStorage", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    static func managedThumbnailURL(assetId: UUID) throws -> URL {
+        let dir = try managedStorageRoot().appendingPathComponent("thumbnails", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("\(assetId.uuidString).png")
+    }
+
+    static func managedPreviewURL(assetId: UUID, ext: String) throws -> URL {
+        let dir = try managedStorageRoot().appendingPathComponent("previews", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("\(assetId.uuidString).\(ext)")
+    }
+
+    static func managedOriginalDirectory(assetId: UUID) throws -> URL {
+        let dir = try managedStorageRoot()
+            .appendingPathComponent("managed-originals", isDirectory: true)
+            .appendingPathComponent(assetId.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    // MARK: - Archives
+
     static func archiveBatchDirectory(named name: String) throws -> URL {
         let directory = try archivesRoot().appendingPathComponent(sanitizePathComponent(name), isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

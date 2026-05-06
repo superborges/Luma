@@ -1,6 +1,150 @@
 import AppKit
 import SwiftUI
 
+// MARK: - V4 ContentView (NavigationSplitView)
+
+struct V4ContentView: View {
+    @Bindable var libraryStore: LibraryStore
+    let migrationManager: V3MigrationManager
+    @AppStorage("Luma.hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
+    @State private var isOnboardingPresented: Bool = false
+    @State private var isMigrating: Bool = false
+    @State private var migrationProgress: MigrationProgress?
+    @State private var migrationError: String?
+
+    var body: some View {
+        ZStack {
+            NavigationSplitView {
+                LibrarySidebar(store: libraryStore)
+            } detail: {
+                detailContent
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .coordinateSpace(.named(LumaCoordinateSpace.window))
+            .buttonStyle(StitchPressScaleButtonStyle())
+            .preferredColorScheme(.dark)
+            .toolbarBackground(StitchTheme.background, for: .windowToolbar)
+            .toolbarBackground(.visible, for: .windowToolbar)
+            .toolbarColorScheme(.dark, for: .windowToolbar)
+            .background(MainWindowTitleConfig())
+            .sheet(isPresented: $isOnboardingPresented) {
+                OnboardingView { isOnboardingPresented = false }
+                    .buttonStyle(StitchPressScaleButtonStyle())
+            }
+            .overlay(alignment: .bottom) {
+                if let progress = libraryStore.importProgress, libraryStore.isImporting {
+                    ImportProgressView(progress: progress)
+                        .padding()
+                }
+            }
+            .alert("导入失败", isPresented: Binding(
+                get: { libraryStore.importError != nil },
+                set: { if !$0 { libraryStore.dismissImportError() } }
+            )) {
+                Button("确定") { libraryStore.dismissImportError() }
+            } message: {
+                Text(libraryStore.importError ?? "")
+            }
+            .disabled(isMigrating)
+
+            if isMigrating {
+                Color.black.opacity(0.6)
+                    .ignoresSafeArea()
+                MigrationProgressView(
+                    progress: migrationProgress,
+                    error: migrationError,
+                    onRetry: { Task { await runMigration() } }
+                )
+            }
+        }
+        .task {
+            if (try? migrationManager.needsMigration()) == true {
+                await runMigration()
+            }
+            await libraryStore.bootstrap()
+            if !hasSeenOnboarding {
+                isOnboardingPresented = true
+            }
+        }
+    }
+
+    private func runMigration() async {
+        isMigrating = true
+        migrationError = nil
+        migrationProgress = nil
+        do {
+            try await migrationManager.performMigration { progress in
+                Task { @MainActor in
+                    migrationProgress = progress
+                }
+            }
+            try? await Task.sleep(for: .seconds(1.5))
+            isMigrating = false
+            await libraryStore.bootstrap()
+        } catch {
+            migrationError = error.localizedDescription
+        }
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        switch libraryStore.selectedNavItem {
+        case .expedition(let id):
+            if let ws = libraryStore.workspaceStore,
+               ws.currentExpedition?.id == id {
+                ExpeditionCullingView(workspace: ws, libraryStore: libraryStore)
+            } else if let error = libraryStore.expeditionOpenError {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.red)
+                    Text("无法打开旅程")
+                        .font(.headline)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("重试") {
+                        libraryStore.openExpedition(id: id)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            } else {
+                ProgressView("加载中…")
+                    .task(id: id) { libraryStore.openExpedition(id: id) }
+            }
+        case .allPhotos:
+            AllPhotosGridView(store: libraryStore)
+        case .recentlyAdded:
+            RecentlyAddedView(store: libraryStore)
+        case .unorganized:
+            UnorganizedPhotosView(store: libraryStore)
+        case .macPhotos:
+            macPhotosContent
+        case .taskList:
+            ActionJobListView(store: libraryStore)
+        case .album(let id):
+            AlbumDetailView(store: libraryStore, albumId: id)
+        case .smartAlbum(let filter):
+            SmartAlbumDetailView(store: libraryStore, filter: filter)
+        case nil:
+            ExpeditionListView(store: libraryStore)
+        }
+    }
+
+    @ViewBuilder
+    private var macPhotosContent: some View {
+        if libraryStore.macPhotosConnected {
+            MacPhotosBrowseView(store: libraryStore)
+        } else {
+            MacPhotosSettingsView(store: libraryStore)
+        }
+    }
+
+}
+
+// MARK: - V3 ContentView (Legacy, deprecated)
+
+@available(*, deprecated, message: "Use V4ContentView with LibraryStore instead")
 struct ContentView: View {
     @Bindable var store: ProjectStore
     @AppStorage("Luma.hasSeenOnboarding") private var hasSeenOnboarding: Bool = false

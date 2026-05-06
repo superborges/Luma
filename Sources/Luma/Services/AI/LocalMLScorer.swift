@@ -14,6 +14,21 @@ struct LocalMLAssessment: Codable, Hashable {
 struct LocalMLScorer: Sendable {
     private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
+    func score(masterAsset: MasterAsset) async -> LocalMLAssessment {
+        guard let sourceURL = masterAsset.existingImageFileURL else {
+            return LocalMLAssessment(
+                issues: [.unsupportedFormat],
+                score: 15,
+                subscores: PhotoScores(composition: 35, exposure: 20, color: 20, sharpness: 10, story: 35),
+                comment: "素材无法读取，建议跳过或手动检查。",
+                recommended: false
+            )
+        }
+        return await Task.detached(priority: .utility) {
+            Self.analyzeAsset(from: sourceURL)
+        }.value
+    }
+
     func score(asset: MediaAsset) async -> LocalMLAssessment {
         guard let sourceURL = asset.existingImageFileURL else {
             return LocalMLAssessment(

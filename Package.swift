@@ -14,9 +14,15 @@ let package = Package(
             targets: ["Luma"]
         ),
     ],
+    dependencies: [
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.5.0"),
+    ],
     targets: [
         .executableTarget(
             name: "Luma",
+            dependencies: [
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ],
             exclude: [
                 // Info.plist 由 linker 通过 -sectcreate 嵌入可执行文件，不作为资源处理
                 "App/Info.plist",
@@ -53,7 +59,10 @@ let package = Package(
         ),
         .testTarget(
             name: "LumaTests",
-            dependencies: ["Luma"]
+            dependencies: [
+                "Luma",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ]
         ),
     ]
 )

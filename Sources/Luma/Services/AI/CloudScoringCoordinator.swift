@@ -370,6 +370,47 @@ final class CloudScoringCoordinator {
         progressContinuation.yield(event)
     }
 
+    // MARK: - V4 Overload
+
+    /// V4 入口：接受 `[MasterAsset]` + `[PhotoGroup]`，内部转为旧接口。
+    func start(
+        strategy: ScoringStrategy,
+        groups: [PhotoGroup],
+        masterAssets: [MasterAsset],
+        in projectDirectory: URL,
+        thresholdUSD: Double,
+        onGroupResult: @escaping @MainActor (UUID, GroupScoreResult, ModelConfig) async -> Void
+    ) async throws {
+        let mediaAssets = masterAssets.map { ma -> MediaAsset in
+            MediaAsset(
+                id: ma.id,
+                importResumeKey: ma.id.uuidString,
+                baseName: ma.baseName,
+                source: .folder(path: ""),
+                previewURL: ma.previewURL,
+                rawURL: ma.rawURL,
+                livePhotoVideoURL: ma.livePhotoVideoURL,
+                depthData: false,
+                thumbnailURL: ma.thumbnailCacheURL,
+                metadata: ma.metadata ?? EXIFData(
+                    captureDate: ma.captureDate ?? .distantPast,
+                    gpsCoordinate: nil, focalLength: nil, aperture: nil,
+                    shutterSpeed: nil, iso: nil, cameraModel: nil, lensModel: nil,
+                    imageWidth: 0, imageHeight: 0
+                ),
+                mediaType: ma.mediaType,
+                importState: .complete,
+                aiScore: nil, editSuggestions: nil,
+                userDecision: .pending, userRating: nil, issues: []
+            )
+        }
+        try await start(
+            strategy: strategy, groups: groups, assets: mediaAssets,
+            in: projectDirectory, thresholdUSD: thresholdUSD,
+            onGroupResult: onGroupResult
+        )
+    }
+
     // MARK: - 工具
 
     private func timeRangeDescription(for group: PhotoGroup) -> String? {

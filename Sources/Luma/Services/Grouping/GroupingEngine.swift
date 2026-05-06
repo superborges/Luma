@@ -509,6 +509,46 @@ struct GroupingEngine: Sendable {
         return groups
     }
 
+    /// V4 适配：接受 `[MasterAsset]`，内部转为 `[MediaAsset]` 后调用主分组逻辑。
+    func makeGroupsFromMasterAssets(
+        _ masterAssets: [MasterAsset],
+        resolvesLocationNames: Bool = true
+    ) async -> [PhotoGroup] {
+        let mediaAssets = masterAssets.map { ma -> MediaAsset in
+            MediaAsset(
+                id: ma.id,
+                importResumeKey: ma.id.uuidString,
+                baseName: ma.baseName,
+                source: .folder(path: ""),
+                previewURL: ma.previewURL,
+                rawURL: ma.rawURL,
+                livePhotoVideoURL: ma.livePhotoVideoURL,
+                depthData: false,
+                thumbnailURL: ma.thumbnailCacheURL,
+                metadata: ma.metadata ?? EXIFData(
+                    captureDate: ma.captureDate ?? .distantPast,
+                    gpsCoordinate: nil,
+                    focalLength: nil,
+                    aperture: nil,
+                    shutterSpeed: nil,
+                    iso: nil,
+                    cameraModel: nil,
+                    lensModel: nil,
+                    imageWidth: 0,
+                    imageHeight: 0
+                ),
+                mediaType: ma.mediaType,
+                importState: .complete,
+                aiScore: nil,
+                editSuggestions: nil,
+                userDecision: .pending,
+                userRating: nil,
+                issues: []
+            )
+        }
+        return await makeGroups(from: mediaAssets, resolvesLocationNames: resolvesLocationNames)
+    }
+
     func refreshGroupNames(for groups: [PhotoGroup]) async -> [PhotoGroup] {
         guard !groups.isEmpty else { return groups }
 

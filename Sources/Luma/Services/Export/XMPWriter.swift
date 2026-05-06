@@ -149,6 +149,56 @@ enum XMPWriter {
             .replacingOccurrences(of: ">", with: "&gt;")
     }
 
+    // MARK: - MasterAsset Overload
+
+    static func writeSidecar(
+        for asset: MasterAsset,
+        groupName: String?,
+        rating: Int,
+        nextTo imageURL: URL
+    ) throws {
+        let xmpURL = imageURL.deletingPathExtension().appendingPathExtension("xmp")
+        try xmpForMasterAsset(asset, groupName: groupName, rating: rating)
+            .write(to: xmpURL, atomically: true, encoding: .utf8)
+    }
+
+    static func xmpForMasterAsset(_ asset: MasterAsset, groupName: String?, rating: Int) -> String {
+        let label = "Green"
+        var keywords: [String] = []
+        if let gn = groupName, !gn.isEmpty { keywords.append(gn) }
+        let hierarchical = groupName ?? ""
+
+        var descParts: [String] = []
+        if let meta = asset.metadata {
+            if let cam = meta.cameraModel { descParts.append("Camera: \(cam)") }
+            if let lens = meta.lensModel { descParts.append("Lens: \(lens)") }
+        }
+        let description = xmlEscaped(descParts.joined(separator: " · "))
+
+        return """
+        <?xpacket begin="\u{FEFF}" id="W5M0MpCehiHzreSzNTczkc9d"?>
+        <x:xmpmeta xmlns:x="adobe:ns:meta/">
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+            <rdf:Description
+              xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+              xmlns:dc="http://purl.org/dc/elements/1.1/"
+              xmlns:lr="http://ns.adobe.com/lightroom/1.0/"
+              xmp:Rating="\(rating)"
+              xmp:Label="\(label)">
+              <dc:description>
+                <rdf:Alt>
+                  <rdf:li xml:lang="x-default">\(description)</rdf:li>
+                </rdf:Alt>
+              </dc:description>
+              \(subjectBagXML(keywords))
+              \(hierarchicalSubjectBagXML(hierarchical))
+            </rdf:Description>
+          </rdf:RDF>
+        </x:xmpmeta>
+        <?xpacket end="w"?>
+        """
+    }
+
     // MARK: - Edit Suggestions
 
     private static func adjustmentFragment(for suggestions: EditSuggestions?) -> String {

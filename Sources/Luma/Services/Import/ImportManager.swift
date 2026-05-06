@@ -39,6 +39,7 @@ struct ImportedProjectSnapshot {
     let isFinal: Bool
 }
 
+@available(*, deprecated, message: "Use ImportPipeline instead (V4)")
 struct ImportManager: Sendable {
     private let groupingEngine: GroupingEngine
     private static let logger = Logger(subsystem: "Luma", category: "ImportManager")

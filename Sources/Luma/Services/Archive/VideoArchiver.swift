@@ -130,6 +130,62 @@ struct VideoArchiver {
         return (deletedCount, freedBytes)
     }
 
+    // MARK: - MasterAsset Overloads
+
+    func archive(
+        masterAssets: [MasterAsset],
+        title: String,
+        outputURL: URL,
+        onProgress: (@Sendable (ArchiveProgress) -> Void)? = nil
+    ) async throws -> ArchiveResult {
+        let mediaAssets = masterAssets.map { Self.toMediaAsset($0) }
+        return try await archive(assets: mediaAssets, title: title, outputURL: outputURL, onProgress: onProgress)
+    }
+
+    func shrinkKeep(
+        masterAssets: [MasterAsset],
+        outputDirectory: URL,
+        onProgress: (@Sendable (ArchiveProgress) -> Void)? = nil
+    ) async throws -> ArchiveResult {
+        let mediaAssets = masterAssets.map { Self.toMediaAsset($0) }
+        return try await shrinkKeep(assets: mediaAssets, outputDirectory: outputDirectory, onProgress: onProgress)
+    }
+
+    static func toMediaAsset(_ master: MasterAsset) -> MediaAsset {
+        let source: ImportSource
+        if master.storageMode == .externalReference, let extId = master.externalIdentifier {
+            source = .photosLibrary(localIdentifier: extId)
+        } else {
+            source = .folder(path: master.originalURL?.path ?? "")
+        }
+        let exif = master.metadata ?? EXIFData(
+            captureDate: master.captureDate ?? .distantPast,
+            gpsCoordinate: nil,
+            focalLength: nil, aperture: nil, shutterSpeed: nil, iso: nil,
+            cameraModel: nil, lensModel: nil,
+            imageWidth: 0, imageHeight: 0
+        )
+        return MediaAsset(
+            id: master.id,
+            importResumeKey: master.externalIdentifier ?? master.id.uuidString,
+            baseName: master.baseName,
+            source: source,
+            previewURL: master.previewURL,
+            rawURL: master.rawURL,
+            livePhotoVideoURL: master.livePhotoVideoURL,
+            depthData: false,
+            thumbnailURL: master.thumbnailCacheURL,
+            metadata: exif,
+            mediaType: master.mediaType,
+            importState: .complete,
+            aiScore: nil,
+            editSuggestions: nil,
+            userDecision: .pending,
+            userRating: nil,
+            issues: []
+        )
+    }
+
     // MARK: - Disk Space Estimation
 
     static func estimateArchiveSize(assets: [MediaAsset], handling: RejectedHandling) -> Int64 {

@@ -18,7 +18,6 @@ struct KeyboardShortcutBridge: NSViewRepresentable {
     func updateNSView(_ nsView: KeyHandlingView, context: Context) {
         context.coordinator.handler = handler
         nsView.coordinator = context.coordinator
-        nsView.activateIfNeeded()
     }
 
     static func dismantleNSView(_ nsView: KeyHandlingView, coordinator: Coordinator) {
@@ -73,8 +72,10 @@ final class KeyHandlingView: NSView {
     func activateIfNeeded() {
         DispatchQueue.main.async { [weak self] in
             guard let self, let window = self.window else { return }
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
+            if let responder = window.firstResponder,
+               responder is NSTextView || responder is NSTextField {
+                return
+            }
             window.makeFirstResponder(self)
         }
     }

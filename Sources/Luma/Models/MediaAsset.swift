@@ -148,10 +148,12 @@ enum ImportSource: Codable, Hashable {
     case photosLibrary(localIdentifier: String)
 }
 
-enum MediaType: String, Codable, Hashable {
+enum MediaType: String, Codable, Hashable, Sendable {
     case photo
+    case rawPlusJpeg
     case livePhoto
     case portrait
+    case unknown
 }
 
 enum ImportState: String, Codable, Hashable {

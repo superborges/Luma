@@ -1,6 +1,7 @@
 import Foundation
 import CoreGraphics
 
+@available(*, deprecated, message: "Use AssetSourceAdapter instead (V4)")
 protocol ImportSourceAdapter {
     var displayName: String { get }
     func enumerate() async throws -> [DiscoveredItem]

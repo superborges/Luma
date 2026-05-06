@@ -1,21 +1,31 @@
 # Luma 文档索引
 
-> **当前状态**：`PRODUCT_SPEC.md` 规划的全部功能已于 V3（2026-05）实现并验收。
+## 当前状态
 
-| 目录 / 文件 | 用途 |
-|-------------|------|
-| **`raw/`** | **产品规格（已完成）**：`PRODUCT_SPEC.md` 为完整产品规格，所有核心功能已实现。 |
-| **`V1/`** | V1 Build Spec 与 Coding Agent Briefs：MVP 导入/分组/评分/选片/导出闭环。 |
-| **`V2/`** | V2 Build Spec 与 Coding Agent Briefs：云端 AI 评分、修图建议、设置页。 |
-| **`V3/`** | V3 Build Spec 与 Coding Agent Briefs：SD 卡导入、Lightroom/XMP 导出、归档、校准、AI 组名。 |
-| **`MVP/`** | 早期 MVP 基线文档，已被 V1-V3 迭代覆盖。 |
-| **`日报/`** | 工作日报存档。 |
+- V1–V3：已全部实现并合并到 `main`
+- V4：架构重构中（`v4` 分支）
 
-**版本演进**
+## 版本演进
 
-| 版本 | 主要交付 |
-|------|---------|
-| MVP | 可运行闭环：文件夹导入 → 时间分组 → 本地评分 → 选片 → 文件夹导出 |
-| V1 | Photos 导入、导入断点续传、Bug 修复 |
-| V2 | 云端多模型 AI 评分、修图建议、设置页、预算控制 |
-| V3 | SD 卡(DiskArbitration)导入、Lightroom XMP 导出、归档视频/缩小保留/丢弃、评分校准、AI 组名 |
+| 版本 | 核心交付 | 状态 |
+|------|----------|------|
+| MVP | 文件夹导入 → 分组 → 选片 → 导出 | 已完成 |
+| V1 | 选片增强、照片导入筛选、导出命名 | 已完成 |
+| V2 | AI 基础设施、云端批量评分、修图建议 | 已完成 |
+| V3 | SD 卡导入、Lightroom 导出、归档模块、AI 增强 | 已完成 |
+| V4 | Expedition 核心架构、SQLite 持久化、Mac Photos 绑定、Album + Action System | 进行中 |
+
+## V4 文档结构
+
+- `docs/V4/Build Spec.md` — 覆盖 Phase 1–3 的完整构建规格
+- `docs/V4/Coding Agent Brief - P1F1 数据层重构.md` — GRDB schema + Repository
+- `docs/V4/Coding Agent Brief - P1F2 Expedition与资产管理.md` — Expedition + MasterAsset + ExpeditionAsset
+- `docs/V4/Coding Agent Brief - P1F3 导入流程重构.md` — AssetSourceAdapter + ImportPipeline
+- `docs/V4/Coding Agent Brief - P1F4 选片工作台迁移.md` — CullingWorkspace 绑定 Expedition
+- `docs/V4/Coding Agent Brief - P1F5 导航与首页重构.md` — NavigationSplitView + Library 首页
+- `docs/V4/Coding Agent Brief - P1F6 V3数据迁移.md` — V3 JSON manifest → V4 SQLite 自动迁移
+
+## 产品规格
+
+- `docs/raw/PRODUCT_SPEC.md` — V1–V3 产品规格（已全部实现）
+- `docs/raw/PRODUCT_SPEC_V4.md` — V4 产品规格

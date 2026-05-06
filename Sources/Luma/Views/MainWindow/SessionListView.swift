@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// 首页 Session 列表：展示所有 Session、新建 Import Session、排序、打开/归档/删除。
+@available(*, deprecated, message: "Use LibrarySidebar + ExpeditionListView instead (V4)")
 struct SessionListView: View {
     @Bindable var store: ProjectStore
 
